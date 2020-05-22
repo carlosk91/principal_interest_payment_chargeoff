@@ -70,12 +70,17 @@ monthly_payments_summary_fun <-
       ungroup()
   }
 
-plot_principal_paid_share <-
+lineplot_principal_paid_share <-
   function(data,
-           group_var = NA,
+           group_var = NULL,
            term = 11) {
-    if(is.na(group_var) == F){
-      group_variable <- enquo(group_var)}
+    # handling NULL name
+    if (missing(group_var)) {
+      group_variable <- ""
+    } else{
+      group_variable <- enquo(group_var)
+    }
+      
     
     plot <-
       data %>%
@@ -85,15 +90,48 @@ plot_principal_paid_share <-
       ggplot(aes(
         x = months_in_books,
         y = principal_paid_share,
-        if(is.na(group_var) == F){color = as.character(!!group_variable)}
+        color = as.character(!!group_variable)
       )) +
       geom_line() +
       labs(
         title = 'Principal paid share among the months in books',
-        if(is.na(group_var) == F){color = deparse(substitute(!!group_variable))},
+        color = deparse(substitute(!!group_variable)),
         x = 'Months in books',
         y = 'Principal paid share'
       ) +
       scale_y_continuous(labels = scales::percent)
     return(plot)
   }
+
+# boxplot_principal_paid_share <-
+#   function(data,
+#            group_var = NULL,
+#            term = 11) {
+#     # handling NULL name
+#     if (missing(group_var)) {
+#       group_variable <- ""
+#     } else{
+#       group_variable <- enquo(group_var)
+#     }
+#     
+#     
+#     plot <-
+#       data %>%
+#       filter(
+#         original_term_to_maturity == term
+#       ) %>%
+#       ggplot(aes(
+#         x = months_in_books,
+#         y = principal_paid_share,
+#         color = as.character(!!group_variable)
+#       )) +
+#       geom_line() +
+#       labs(
+#         title = 'Principal paid share among the months in books',
+#         color = deparse(substitute(!!group_variable)),
+#         x = 'Months in books',
+#         y = 'Principal paid share'
+#       ) +
+#       scale_y_continuous(labels = scales::percent)
+#     return(plot)
+#   }
