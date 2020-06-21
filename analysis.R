@@ -8,22 +8,20 @@
   monthly_payments_summary <-
     monthly_payments_summary_fun(max_months_after_term = 2)
   
-  
   lineplot_principal_paid_share(data = monthly_payments_summary,
                                 term = 3)
-  
   
   lineplot_principal_paid_share(data = monthly_payments_summary,
                                 term = 6)
   
-  
   lineplot_principal_paid_share(data = monthly_payments_summary,
                                 term = 11)
   
+  lineplot_principal_paid_share(data = monthly_payments_summary,
+                                term = 18)
   
   lineplot_principal_paid_share(data = monthly_payments_summary,
-                                term = 12)
-  
+                                term = 24)
   
   ##### By vintage #####
   
@@ -65,6 +63,24 @@
   lineplot_principal_paid_share(data = monthly_payments_summary_vintage,
                                 group_var = vintage,
                                 term = 12)
+  
+  
+  monthly_payments_summary_vintage <-
+    monthly_payments_summary_fun(
+      only_post_term_vintages = T,
+      max_months_after_term = 2,
+      vintage = vintage,
+      all_dates = T
+    )
+  
+  plotly::ggplotly(
+    lineplot_principal_paid_share(
+      data = monthly_payments_summary_vintage,
+      group_var = vintage,
+      term = 11
+    )
+  )
+  
   
   ##### By credit segment #####
   
@@ -178,7 +194,7 @@
     as_tibble()
   
   monthly_chargeoff_summary %>%
-    filter(original_term_to_maturity %in% c(3,6,11)) %>%
+    filter(original_term_to_maturity %in% c(3, 6, 11)) %>%
     ggplot(aes(
       x = months_in_books,
       y = chargeoff_principal_share,
@@ -188,10 +204,11 @@
     labs(
       title = 'Principal paid share among the months in books',
       color = 'Term',
-      x = 'Months in books',
+      x = 'Months on books',
       y = 'Principal paid share'
     ) +
-    scale_y_continuous(labels = scales::percent)
+    scale_y_continuous(labels = scales::percent) +
+    scale_x_continuous(breaks = round(seq(1, 25, by = 1), 1))
   
   ##### By segment #####
   
@@ -208,17 +225,67 @@
     ungroup() %>%
     select(-chargeoff_principal)
   
+  ##### By vintage #####
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 3))
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 6))
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 11))
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 18))
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 24))
+  
+  ##### By segment @ specific vertical and vintage #####
+  
+  monthly_chargeoff_segment_summary <-
+    monthly_records[['monthly_principal_chargeoff']] %>%
+    filter(
+      original_term_to_maturity == 3 &
+        vintage %in% as_date('2019-05-01') &
+        vertical == 'Air'
+    ) %>%
+    mutate(months_in_books = month_diff(vintage, chargeoffmonth)) %>%
+    group_by(credit_segment,
+             vertical,
+             months_in_books) %>%
+    summarise(chargeoff_principal = sum(chargeoffprincipal, na.rm = T)) %>%
+    ungroup() %>%
+    group_by(credit_segment) %>%
+    mutate(chargeoff_principal_share = chargeoff_principal /
+             sum(chargeoff_principal)) %>%
+    ungroup() %>%
+    select(-chargeoff_principal) %>%
+    as_tibble()
+  
+  plotly::ggplotly(
+    monthly_chargeoff_segment_summary %>%
+      ggplot(
+        aes(x = months_in_books,
+            y = chargeoff_principal_share,
+            color = credit_segment)
+      ) +
+      geom_line() +
+      labs(
+        title = 'Charge off share May 2019 Air vertical',
+        color = 'Term',
+        x = 'Months on books',
+        y = 'Charge off share'
+      ) +
+      scale_y_continuous(labels = scales::percent) +
+      scale_x_continuous(breaks = round(seq(1, 25, by = 1), 1))
+  )
   
 }
 
 #### Creating 18 and 24 terms payments ####
 {
-  
-  monthly_payments_for_terms_simulation_18months <- 
+  monthly_payments_for_terms_simulation_18months <-
     term_simulation_payments(base_term = 11,
                              term_to_simulate = 18)
   
-  monthly_payments_for_terms_simulation_24months <- 
+  monthly_payments_for_terms_simulation_24months <-
     term_simulation_payments(base_term = 11,
                              term_to_simulate = 24)
   
@@ -227,7 +294,7 @@
     ggplot(aes(x = months_in_books,
                y = principal_paid_share,
                color = vertical)) +
-    geom_line()  
+    geom_line()
   
   monthly_payments_for_terms_simulation_24months %>%
     filter(credit_segment == 'Prime') %>%
@@ -235,8 +302,8 @@
                y = principal_paid_share,
                color = vertical)) +
     geom_line()
-  # 
-  # 
+  #
+  #
   # fitted_monthly_payments_for_terms_simulation <-
   #   monthly_payments_for_terms_simulation %>%
   #   group_by(credit_segment,
@@ -247,7 +314,7 @@
   #     span = 0.25
   #   )) %>%
   #   augment(loess_fit)
-  # 
+  #
   # qplot(
   #   months_in_books,
   #   principal_paid_share,
@@ -263,21 +330,20 @@
 
 #### Creating 18 and 24 terms charge off ####
 {
-  
-  monthly_chargeoff_for_terms_simulation_18months <- 
+  monthly_chargeoff_for_terms_simulation_18months <-
     term_simulation_charge_off(base_term = 11,
-                             term_to_simulate = 18)
+                               term_to_simulate = 18)
   
-  monthly_chargeoff_for_terms_simulation_24months <- 
+  monthly_chargeoff_for_terms_simulation_24months <-
     term_simulation_charge_off(base_term = 11,
-                             term_to_simulate = 24)
+                               term_to_simulate = 24)
   
   monthly_payments_for_terms_simulation_18months %>%
     filter(credit_segment == 'Prime') %>%
     ggplot(aes(x = months_in_books,
                y = ca,
                color = vertical)) +
-    geom_line()  
+    geom_line()
   
   monthly_payments_for_terms_simulation_24months %>%
     filter(credit_segment == 'Prime') %>%
@@ -285,8 +351,8 @@
                y = principal_paid_share,
                color = vertical)) +
     geom_line()
-  # 
-  # 
+  #
+  #
   # fitted_monthly_payments_for_terms_simulation <-
   #   monthly_payments_for_terms_simulation %>%
   #   group_by(credit_segment,
@@ -297,7 +363,7 @@
   #     span = 0.25
   #   )) %>%
   #   augment(loess_fit)
-  # 
+  #
   # qplot(
   #   months_in_books,
   #   principal_paid_share,

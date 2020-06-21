@@ -1,3 +1,12 @@
+closing_month <-
+  function(date = floor_date(Sys.Date() -
+                               mday(Sys.Date()),
+                             unit = 'month')) {
+    closing_date <- as_date(date)
+    
+    return(date)
+  }
+
 seq_months_to_forecast <-
   function(start_date = '2017-01-01',
            end_date = '2022-12-01') {
@@ -12,6 +21,8 @@ dates_not_to_consider <- function(to_charge_off = F) {
     as_date(
       c(
         '2017-01-01',
+        '2017-02-01',
+        '2017-05-01',
         '2017-12-01',
         '2018-03-01',
         '2018-04-01',
@@ -21,19 +32,32 @@ dates_not_to_consider <- function(to_charge_off = F) {
       )
     )
   if (to_charge_off == T) {
-    dates <- c(dates, as_date(c('2017-06-01',
-                                '2017-08-01')))
+    dates <- c(dates, as_date(
+      c(
+        '2017-06-01',
+        '2017-08-01',
+        '2019-07-01',
+        '2019-08-01',
+        '2019-09-01',
+        '2019-10-01',
+        '2019-11-01'
+      )
+    ))
   }
   
   return(dates)
 }
 
-read_csvs <- function(files_name = NA) {
+read_csvs <- function(files_name = NA,
+                      file_path = NA) {
   if (is.na(files_name)) {
-    files_name <- list.files(pattern = '.csv')
+    files_name <- list.files(path = case_when(is.na(file_path) ~ ".",
+                                              T ~ file_path),
+                             pattern = '.csv')
   }
   
-  csv_files <- lapply(files_name, read_csv)
+  csv_files <- lapply(glue("{file_path}{files_name}", .na = ""),
+                      read_csv)
   names(csv_files) <- gsub(pattern = '.csv',
                            replacement = '',
                            x = tolower(files_name))
@@ -41,9 +65,19 @@ read_csvs <- function(files_name = NA) {
     colnames(csv_files[[i]]) <- gsub(
       pattern = '.csv',
       replacement = '',
-      x = tolower(colnames(csv_files[[i]]))
+      x = gsub(
+        pattern = '-',
+        replacement = '',
+        x = tolower(colnames(csv_files[[i]]))
+      )
     )
   }
+  
+  names(csv_files) <-
+    gsub(pattern = '-',
+         replacement = '_',
+         x = names(csv_files))
+  
   return(csv_files)
 }
 
@@ -60,6 +94,7 @@ monthly_payments_summary_fun <-
   function(data = 'monthly_payments',
            max_months_after_term = NA,
            only_post_term_vintages = F,
+           all_dates = F,
            ...) {
     quo_group_var <- enquos(...)
     max_months <- case_when(is.na(max_months_after_term) ~ 0,
@@ -69,7 +104,8 @@ monthly_payments_summary_fun <-
       mutate(months_in_books = month_diff(start_date = vintage,
                                           end_date = payment_month)) %>%
       filter(
-        !(vintage %in% dates_not_to_consider()),
+        case_when(all_dates ~ T,
+                  T ~ !(vintage %in% dates_not_to_consider())),
         vintage >= as_date('2017-01-01'),
         is.na(principal_paid) == F,
         case_when(
@@ -126,8 +162,8 @@ lineplot_principal_paid_share <-
       geom_line() +
       labs(
         title = 'Principal paid share among the months in books',
-        color = deparse(substitute(!!group_variable)),
-        x = 'Months in books',
+        color = glue('{term} term loans'),
+        x = 'Months on books',
         y = 'Principal paid share'
       ) +
       scale_y_continuous(labels = scales::percent)
@@ -263,7 +299,7 @@ term_simulation_charge_off <-
   function(base_term,
            term_to_simulate,
            starting_mb_to_long = 6,
-           months_to_charge_off = 6,
+           months_to_charge_off = 2,
            ending_mb_to_long = NA) {
     if (is.na(ending_mb_to_long)) {
       ending_mb_to_long <-
@@ -386,3 +422,336 @@ term_simulation_charge_off <-
       mutate(charge_off_principal_share = charge_off_principal_share /
                sum(charge_off_principal_share))
   }
+
+
+create_amort_table <- function(data) {
+  amort_table <-
+    amort.table(
+      Loan = data$loanamount,
+      n = data$term,
+      i = data$borrowerinterestrate / 100,
+      ic = 12,
+      pf = 12
+    )$Schedule %>%
+    as_tibble() %>%
+    transmute(
+      loanid = data$loanid,
+      loanamount = data$loanamount,
+      borrowerinterestrate = data$borrowerinterestrate,
+      term = data$term,
+      tenure = round(Year * 12),
+      amort_payment = Payment,
+      amort_principal_paid = `Principal Paid`,
+      amort_interest_paid = `Interest Paid`
+    )
+  
+  return(amort_table)
+}
+
+create_real_payments <- function(data) {
+  real_payments <- data %>%
+    transmute(
+      loanid,
+      loanamount,
+      term,
+      borrowerinterestrate,
+      monthlyvintage = floor_date(as_date(paste0(
+        monthlyvintage, "-01"
+      )),
+      "month"),
+      current_tenure = month_diff(
+        start_date = monthlyvintage,
+        end_date = as_date(closing_month())
+      ),
+      apr
+    ) %>%
+    inner_join(
+      loan_tapes[["loans_payments_by_month"]] %>%
+        transmute(
+          loanid,
+          payment_month = as_date(payment_month),
+          principal_paid,
+          interest_paid
+        )
+    )
+  
+  real_payments %<>%
+    mutate(tenure =
+             month_diff(start_date = monthlyvintage,
+                        end_date = payment_month)) %>%
+    arrange(payment_month)
+  
+  return(real_payments)
+}
+
+amort_payments_comparisson <- function(data) {
+  create_amort_table(data) %>%
+    left_join(create_real_payments(data)) %>%
+    select(
+      loanid,
+      term,
+      loanamount,
+      borrowerinterestrate,
+      tenure,
+      amort_payment,
+      amort_principal_paid,
+      principal_paid,
+      amort_interest_paid,
+      interest_paid
+    )
+}
+
+amount_paid_by_loan <- function() {
+  loan_tapes[["loans_payments_by_month"]] %>%
+    group_by(loanid) %>%
+    summarise(
+      principal_paid = sum(principal_paid),
+      interest_paid = sum(interest_paid)
+    ) %>%
+    ungroup()
+}
+
+apr_summary <- function(paid_loans = T,
+                        at_least_2_months = T) {
+  loan_tapes[["loan_feed_v1_20200531"]] %>%
+    filter(case_when(paid_loans ~ loanstatus == 'Fully Paid',
+                     T ~ T)) %>%
+    transmute(
+      loanid,
+      loanamount,
+      term,
+      monthlyvintage = floor_date(as_date(paste0(
+        monthlyvintage, "-01"
+      )),
+      "month"),
+      current_tenure = month_diff(
+        start_date = monthlyvintage,
+        end_date = max(monthlyvintage)
+      ),
+      apr
+    ) %>%
+    inner_join(amount_paid_by_loan()) %>%
+    group_by(monthlyvintage,
+             current_tenure,
+             term) %>%
+    summarise(
+      weighted_registered_apr =
+        sum(loanamount * apr) /
+        sum(loanamount) / 100,
+      weighted_charged_apr =
+        12 * sum(interest_paid, na.rm = T) /
+        sum(loanamount) /
+        mean(case_when(
+          term > current_tenure ~ current_tenure,
+          T ~ term
+        )),
+      loans = n()
+    ) %>%
+    pivot_longer(
+      -c(monthlyvintage,
+         current_tenure,
+         term),
+      names_to = "variable",
+      values_to = "values"
+    ) %>%
+    filter(case_when(at_least_2_months ~ current_tenure > 1,
+                     T ~ T))
+}
+
+graph_apr_loans <-
+  function(data,
+           variables = c('weighted_charged_apr',
+                         'weighted_registered_apr')) {
+    graph <-
+      data %>%
+      filter(variable %in% variables) %>%
+      mutate(group = paste0(term, ', ', variable)) %>%
+      ggplot(aes(x = monthlyvintage,
+                 y = values,
+                 color = group)) +
+      geom_line() +
+      labs(
+        title = 'Comparisson between real APR and scheduled APR',
+        color = 'Term and APR',
+        x = 'Vintage',
+        y = 'APR'
+      ) +
+      scale_y_continuous(labels = scales::percent)
+  }
+
+apr_data <- function(data) {
+  apr_amort <-
+    12 * sum(amort_payments_comparisson(data)$amort_interest_paid,
+             na.rm = T) /
+    data$loanamount /
+    data$term
+  
+  apr_paid <-
+    12 * sum(amort_payments_comparisson(data)$interest_paid, na.rm = T) /
+    data$loanamount /
+    data$term
+  
+  return(tibble(amort = apr_amort, paid = apr_paid))
+}
+
+
+monthly_chargeoff_vintage_summary <- function(term_filter = 3) {
+  monthly_records[['monthly_principal_chargeoff']] %>%
+    filter(original_term_to_maturity == term_filter,!(vintage %in% dates_not_to_consider())) %>%
+    mutate(months_in_books = month_diff(vintage, chargeoffmonth)) %>%
+    group_by(vintage,
+             months_in_books) %>%
+    summarise(chargeoff_principal = sum(chargeoffprincipal, na.rm = T)) %>%
+    ungroup() %>%
+    group_by(vintage) %>%
+    mutate(chargeoff_principal_share = chargeoff_principal /
+             sum(chargeoff_principal)) %>%
+    ungroup() %>%
+    select(-chargeoff_principal) %>%
+    as_tibble()
+}
+
+
+graph_charge_off_vintage <- function(term_filter) {
+  monthly_chargeoff_vintage_summary(term_filter) %>%
+    ggplot(aes(
+      x = months_in_books,
+      y = chargeoff_principal_share,
+      color = as.character(vintage)
+    )) +
+    geom_line() +
+    labs(
+      title = 'Charge off share among the months in books of {term_filter} month term loans',
+      color = 'Vintages',
+      x = 'Months on books',
+      y = 'Charge off share'
+    ) +
+    scale_y_continuous(labels = scales::percent) +
+    scale_x_continuous(breaks = round(seq(1, 25, by = 1), 1))
+}
+
+principalpaid_df_bt <- function(first_vintage = '2017-01-01',
+                                additional_months = 2) {
+  monthly_records[['monthly_payments']] %>%
+    mutate(
+      months_in_books = month_diff(start_date = vintage,
+                                   end_date = payment_month),
+      vintage_year = year(vintage),
+      year_calendar = year(payment_month),
+      vintage_month  = months(vintage),
+      month_calendar = months(payment_month)
+    ) %>%
+    filter(
+      !(vintage %in% dates_not_to_consider()),
+      vintage >= as_date(first_vintage),
+      is.na(principal_paid) == F,
+      original_term_to_maturity %in% c(3, 6, 11),
+      vintage <=
+        max(monthly_records[['monthly_payments']]$vintage, na.rm = T) %m-%
+        months(original_term_to_maturity +
+                 additional_months),
+      months_in_books <=
+        original_term_to_maturity + additional_months
+    ) %>%
+    arrange(
+      vintage_year,
+      year_calendar,
+      vintage_month,
+      month_calendar,
+      original_term_to_maturity,
+      months_in_books,
+      credit_segment,
+      vertical
+    ) %>%
+    group_by(
+      vintage_year,
+      year_calendar,
+      vintage_month,
+      month_calendar,
+      original_term_to_maturity,
+      months_in_books,
+      credit_segment,
+      vertical
+    ) %>%
+    summarise(principal_paid = sum(principal_paid, na.rm = T)) %>%
+    ungroup() %>%
+    group_by(vintage_year,
+             vintage_month,
+             original_term_to_maturity,
+             credit_segment,
+             vertical) %>%
+    mutate(principal_paid_share = principal_paid /
+             sum(principal_paid)) %>%
+    ungroup() %>%
+    select(-c(principal_paid, vintage_month))
+}
+
+chargeoff_df_bt <- function(first_vintage = '2017-01-01',
+                            additional_months = 2){
+  
+  monthly_records[['monthly_principal_chargeoff']] %>%
+    mutate(
+      chargeoffmonth =
+        case_when(
+          vintage == chargeoffmonth ~
+            chargeoffmonth %m+% months(1),
+          T ~ chargeoffmonth
+        ),
+      months_in_books =
+        month_diff(start_date = vintage,
+                   end_date = chargeoffmonth),
+      vintage_year =
+        year(vintage),
+      year_calendar =
+        year(chargeoffmonth),
+      vintage_month  = months(vintage),
+      month_calendar =
+        months(chargeoffmonth)
+    ) %>%
+    filter(
+      !(vintage %in% dates_not_to_consider(to_charge_off = T)),
+      vintage >= as_date(first_vintage),
+      is.na(chargeoffprincipal) == F,
+      original_term_to_maturity %in% c(3, 6, 11),
+      vintage <=
+        max(monthly_records[['monthly_principal_chargeoff']]$vintage,
+            na.rm = T) %m-%
+        months(original_term_to_maturity +
+                 additional_months),
+      months_in_books <=
+        original_term_to_maturity + additional_months
+    ) %>%
+    arrange(
+      vintage_year,
+      year_calendar,
+      vintage_month,
+      month_calendar,
+      original_term_to_maturity,
+      months_in_books,
+      credit_segment,
+      vertical
+    ) %>%
+    group_by(
+      vintage_year,
+      year_calendar,
+      vintage_month,
+      month_calendar,
+      original_term_to_maturity,
+      months_in_books,
+      credit_segment,
+      vertical
+    ) %>%
+    summarise(chargeoffprincipal_sum = sum(chargeoffprincipal, na.rm = T)) %>%
+    ungroup() %>%
+    group_by(vintage_year,
+             vintage_month,
+             original_term_to_maturity,
+             credit_segment,
+             vertical) %>%
+    mutate(charge_off_principal_share = chargeoffprincipal_sum /
+             sum(chargeoffprincipal_sum)) %>%
+    filter(!(n() <= 1)) %>%
+    ungroup() %>%
+    select(-c(chargeoffprincipal_sum, vintage_month))
+  
+}

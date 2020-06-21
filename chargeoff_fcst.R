@@ -1,69 +1,6 @@
+#### Creating boosting trees for charge off ####
 
-monthly_chargeoff_fcst <-
-  monthly_records[['monthly_principal_chargeoff']] %>%
-  mutate(
-    chargeoffmonth =
-      case_when(
-        vintage == chargeoffmonth ~
-          chargeoffmonth %m+% months(1),
-        T ~ chargeoffmonth
-      ),
-    months_in_books =
-      month_diff(start_date = vintage,
-                 end_date = chargeoffmonth),
-    vintage_year =
-      year(vintage),
-    year_calendar =
-      year(chargeoffmonth),
-    vintage_month  = months(vintage),
-    month_calendar =
-      months(chargeoffmonth)
-  ) %>%
-  filter(
-    !(vintage %in% dates_not_to_consider(to_charge_off = T)),
-    vintage >= as_date('2017-01-01'),
-    is.na(chargeoffprincipal) == F,
-    original_term_to_maturity %in% c(3, 6, 11),
-    vintage <=
-      max(monthly_records[['monthly_principal_chargeoff']]$vintage, 
-          na.rm = T) %m-%
-      months(original_term_to_maturity +
-               6),
-    months_in_books <=
-      original_term_to_maturity + 6
-  ) %>%
-  arrange(
-    vintage_year,
-    year_calendar,
-    vintage_month,
-    month_calendar,
-    original_term_to_maturity,
-    months_in_books,
-    credit_segment,
-    vertical
-  ) %>%
-  group_by(
-    vintage_year,
-    year_calendar,
-    vintage_month,
-    month_calendar,
-    original_term_to_maturity,
-    months_in_books,
-    credit_segment,
-    vertical
-  ) %>%
-  summarise(chargeoffprincipal_sum = sum(chargeoffprincipal, na.rm = T)) %>%
-  ungroup() %>%
-  group_by(vintage_year,
-           vintage_month,
-           original_term_to_maturity,
-           credit_segment,
-           vertical) %>%
-  mutate(charge_off_principal_share = chargeoffprincipal_sum /
-           sum(chargeoffprincipal_sum)) %>%
-  filter(!(n() <= 1)) %>%
-  ungroup() %>%
-  select(-chargeoffprincipal_sum)
+monthly_chargeoff_fcst <- chargeoff_df_bt()
 
 #Boosting
 Ntrees <- 10000
@@ -94,11 +31,13 @@ credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
 vertical <- c('Air', 'Cruise', 'Other', 'Package')
 
 vintages_mb <-
-  as_tibble(expand_grid(vintage,
-                        months,
-                        original_term_to_maturity,
-                        credit_segment,
-                        vertical)) %>%
+  as_tibble(expand_grid(
+    vintage,
+    months,
+    original_term_to_maturity,
+    credit_segment,
+    vertical
+  )) %>%
   transmute(
     vintage,
     months,
@@ -112,8 +51,7 @@ vintages_mb <-
     vertical
   )  %>%
   filter(months_in_books > 2,
-         original_term_to_maturity + 6 >= months_in_books,
-  )
+         original_term_to_maturity + 2 >= months_in_books,)
 
 
 pred.boost <-
@@ -131,7 +69,7 @@ monthly_charge_off_for_terms_simulation_18months <-
 monthly_charge_off_for_terms_simulation_24months <-
   expand_grid(vintage,
               term_simulation_charge_off(base_term = 11,
-                                       term_to_simulate = 24)) %>%
+                                         term_to_simulate = 24)) %>%
   mutate(months = vintage %m+%
            months(months_in_books))
 
@@ -157,8 +95,8 @@ df_pronostico_chargeoff_share <-
       pred.boost
     )
   ) %>%
-  rbind(monthly_charge_off_for_terms_simulation_18months,
-        monthly_charge_off_for_terms_simulation_24months) %>%
-  filter(vintage < as_date('2023-01-01'),
-         months < as_date('2023-01-01'))
-
+  rbind(
+    monthly_charge_off_for_terms_simulation_18months,
+    monthly_charge_off_for_terms_simulation_24months
+  ) %>%
+  filter(vintage < as_date('2023-01-01'))

@@ -1,58 +1,6 @@
-#### Creating boosting trees with data ####
+#### Creating boosting trees for principal paid ####
 
-monthly_payments_for_bt <-
-  monthly_records[['monthly_payments']] %>%
-  mutate(
-    months_in_books = month_diff(start_date = vintage,
-                                 end_date = payment_month),
-    vintage_year = year(vintage),
-    year_calendar = year(payment_month),
-    vintage_month  = months(vintage),
-    month_calendar = months(payment_month)
-  ) %>%
-  filter(
-    !(vintage %in% dates_not_to_consider()),
-    vintage >= as_date('2017-01-01'),
-    is.na(principal_paid) == F,
-    original_term_to_maturity %in% c(3, 6, 11),
-    vintage <=
-      max(monthly_records[['monthly_payments']]$vintage, na.rm = T) %m-%
-      months(original_term_to_maturity +
-               2),
-    months_in_books <=
-      original_term_to_maturity + 2
-  ) %>%
-  arrange(
-    vintage_year,
-    year_calendar,
-    vintage_month,
-    month_calendar,
-    original_term_to_maturity,
-    months_in_books,
-    credit_segment,
-    vertical
-  ) %>%
-  group_by(
-    vintage_year,
-    year_calendar,
-    vintage_month,
-    month_calendar,
-    original_term_to_maturity,
-    months_in_books,
-    credit_segment,
-    vertical
-  ) %>%
-  summarise(principal_paid = sum(principal_paid, na.rm = T)) %>%
-  ungroup() %>%
-  group_by(vintage_year,
-           vintage_month,
-           original_term_to_maturity,
-           credit_segment,
-           vertical) %>%
-  mutate(principal_paid_share = principal_paid /
-           sum(principal_paid)) %>%
-  ungroup() %>%
-  select(-principal_paid)
+monthly_payments_for_bt <- principalpaid_df_bt()
 
 #Boosting
 Ntrees <- 10000
@@ -83,11 +31,13 @@ credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
 vertical <- c('Air', 'Cruise', 'Other', 'Package')
 
 vintages_mb <-
-  as_tibble(expand_grid(vintage,
-                        months,
-                        original_term_to_maturity,
-                        credit_segment,
-                        vertical)) %>%
+  as_tibble(expand_grid(
+    vintage,
+    months,
+    original_term_to_maturity,
+    credit_segment,
+    vertical
+  )) %>%
   transmute(
     vintage,
     months,
@@ -101,8 +51,7 @@ vintages_mb <-
     vertical
   )  %>%
   filter(months_in_books >= 0,
-         original_term_to_maturity + 2 >= months_in_books,
-  )
+         original_term_to_maturity + 2 >= months_in_books,)
 
 
 pred.boost <-
@@ -155,7 +104,8 @@ df_pronostico_principalpaid_share <-
       principal_paid_mod
     )
   ) %>%
-  rbind(monthly_payments_for_terms_simulation_18months,
-        monthly_payments_for_terms_simulation_24months) %>%
-  filter(vintage < as_date('2023-01-01'),
-         months < as_date('2023-01-01'))
+  bind_rows(
+    monthly_payments_for_terms_simulation_18months,
+    monthly_payments_for_terms_simulation_24months
+  ) %>%
+  filter(vintage < as_date('2023-01-01'))
