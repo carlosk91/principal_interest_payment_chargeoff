@@ -175,6 +175,47 @@
   
 }
 
+#### Interest income ####
+{
+
+  monthly_interest_payments_summary_vintage <-
+    monthly_payments_summary_fun(
+      only_post_term_vintages = T,
+      max_months_after_term = 2,
+      vintage = vintage,
+      variable_used = interest_paid
+    )
+  
+  plotly::ggplotly(
+    lineplot_principal_paid_share(
+      data = monthly_interest_payments_summary_vintage,
+      group_var = vintage,
+      term = 3,
+      var = 'Interest'
+    )
+  )
+  
+  plotly::ggplotly(
+    lineplot_principal_paid_share(
+      data = monthly_interest_payments_summary_vintage,
+      group_var = vintage,
+      term = 6,
+      var = 'Interest'
+    )
+  )
+  
+  plotly::ggplotly(
+    lineplot_principal_paid_share(
+      data = monthly_interest_payments_summary_vintage,
+      group_var = vintage,
+      term = 11,
+      var = 'Interest'
+    )
+  )
+  
+}
+
+
 #### Principal charge off ####
 {
   ##### Total #####

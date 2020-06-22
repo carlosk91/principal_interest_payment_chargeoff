@@ -1,0 +1,333 @@
+---
+title: "APR expected and real behavior"
+author: "Carlos Kelly"
+date: "22/6/2020"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+source('libraries.R')
+source('functions.R')
+source('file_reading.R')
+
+options(knitr.kable.NA = 0)
+
+```
+
+# Forecasting the payment behavior {.tabset}
+
+The behavior of the payments of each loan will help us understand how our income will be given any origination. 
+Using the total amount of principal paid as a 100% (this would be seen as the $loanamount(1-VLR)$). Each of the credit segments, verticals, and terms should have an specific behavior for the months on books.
+
+## Behavior of principal payment
+
+We can see that there's a difference between the behavior of payment between 3 and 6 term loans, but it looks like the 6 term is like a stretched 3 term.
+
+```{r principal_paid_graphs_3_6, echo=FALSE, message = FALSE}
+
+monthly_payments_summary <-
+  monthly_payments_summary_fun(max_months_after_term = 2)
+
+ggplotly(lineplot_principal_paid_share(data = monthly_payments_summary,
+                                       term = 3))
+
+ggplotly(lineplot_principal_paid_share(data = monthly_payments_summary,
+                                       term = 6))
+
+```
+
+The behavior of principal paid among the months on books for each term differs, but as the term increases to 11 the first payment takes a higher relative share.
+
+```{r principal_paid_graphs_11, echo=FALSE, message = FALSE}
+
+ggplotly(lineplot_principal_paid_share(data = monthly_payments_summary,
+                                       term = 11))
+
+```
+
+As the 18 and 24 term loans are not past due yet, the approach we will use to forecast their behavior is using the 11 term loan and re-sizing it to the given months, something similar to what we saw between the 3 and 6 term loans.
+```{r principal_paid_graphs_18_24, echo=FALSE, message = FALSE}
+
+ggplotly(lineplot_principal_paid_share(data = monthly_payments_summary,
+                                       term = 18))
+
+ggplotly(lineplot_principal_paid_share(data = monthly_payments_summary,
+                                       term = 24))
+
+```
+
+
+## Data cleanning
+
+In order to create a curve that makes sense we need to clean those months that could have an atypical behavior.
+
+```{r graphs_2, echo=FALSE}
+
+monthly_payments_summary_vintage <-
+  monthly_payments_summary_fun(
+    only_post_term_vintages = T,
+    max_months_after_term = 2,
+    vintage = vintage,
+    all_dates = T
+  )
+
+ggplotly(
+  lineplot_principal_paid_share(
+    data = monthly_payments_summary_vintage,
+    group_var = vintage,
+    term = 11
+  )
+)
+
+```
+
+The previous visualization tells us that there are months that we should not consider, as their behavior has some bumps (i.e. Jan 2017, Feb 2017, May 2017, etc...)
+
+
+## Interest paid by vintage behavior
+
+The behavior of interest paid is similar to the principal paid, where the first months have the highest share at the first month on book of the loan then starts to decrease.
+
+```{r graphs_interest_paid, echo=FALSE}
+    monthly_interest_payments_summary_vintage <-
+    monthly_payments_summary_fun(
+      only_post_term_vintages = T,
+      max_months_after_term = 2,
+      vintage = vintage,
+      variable_used = interest_paid
+    )
+  
+  plotly::ggplotly(
+    lineplot_principal_paid_share(
+      data = monthly_interest_payments_summary_vintage,
+      group_var = vintage,
+      term = 3,
+      var = 'Interest'
+    )
+  )
+  
+  plotly::ggplotly(
+    lineplot_principal_paid_share(
+      data = monthly_interest_payments_summary_vintage,
+      group_var = vintage,
+      term = 6,
+      var = 'Interest'
+    )
+  )
+  
+  plotly::ggplotly(
+    lineplot_principal_paid_share(
+      data = monthly_interest_payments_summary_vintage,
+      group_var = vintage,
+      term = 11,
+      var = 'Interest'
+    )
+  )
+  
+```
+
+The previous visualization tells us that the 3 and 6 term loans have a constant behavior across the vintages, meanwhile the 11 term loans have some random impact in some of the vintages registered.
+
+
+## Behavior of customers charge off
+
+Behavior of charge off among the vintages for each term, in order to forecast we shouldn't consider the months with atypical behavior.
+Those tend to appear in the vintages that haven't got to past due, and vintages that have been disbursed in the early 2018.   
+
+```{r graphs_charge_off, echo=FALSE}
+
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 3))
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 6))
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 11))
+  
+```
+
+Same as payments behavior, 18 and 24 terms aren't mature enough to be considered for the forecasting model, the approach will be the same, re-sizing 11 term loans charge off.
+
+```{r graphs_charge_off_18_24, echo=FALSE}
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 18))
+  
+  plotly::ggplotly(graph_charge_off_vintage(term_filter = 24))
+  
+```
+
+# Calculating the APR for Unit Economics {.tabset}
+
+Our Unit economics depend on how the users pay their loan, as the users differ from the amortization table the APR will be modified. There's a need to understand what are the real unit economics and comprehend which of the users have the best possible behavior available to learn which parameters will fit them best, create strategies, give signals when something might brake, etc. Additionally the expected (projected) unit economics helps us understand how our decisions will affect the profitability of the company.
+
+```{r apr_graph, echo=FALSE, message=FALSE}
+  
+vintage_term_summary <- apr_summary()
+
+graph_comparing_monthly_apr <- graph_apr_loans(vintage_term_summary)
+
+plotly::ggplotly(graph_comparing_monthly_apr)
+
+```
+
+Given the previous paragraph, in this next section we will see how for a given sample of paid loans, the expected, real (charged), and registered (in loan tape) APR differ from each other, and some possible explanations about it.
+
+## Paid loans sample
+
+```{r sampling_paid, echo=FALSE}
+  
+set.seed(1234)
+sample_paid <-
+  loan_tapes[["loan_feed_v1_20200531"]] %>%
+  filter(loanstatus == 'Fully Paid') %>%
+  sample_n(10)
+
+```
+
+Creating a sample of 4 paid loans we will look how the customers in flesh and bones pay their loan
+
+The first loan (`r as.character(sample_paid[1,]$loanid)` loanid) seems that paid before their term completion by `r min(which(sample_paid$principal_paid == 0))` months. 
+The interest amount to be paid from the amortization table would have been.
+`r sum(amort_payments_comparisson(sample_paid[1,])$amort_interest_paid, na.rm = T)`, 
+instead he paid `r sum(amort_payments_comparisson(sample_paid[1,])$interest_paid, na.rm = T)`
+
+Given the APR formula $APR = \frac{12}{term}\frac{\sum(interest)}{principal}$
+the amortization table would have an APR of `r round(100*apr_data(sample_paid[1,])$amort, 2)`, 
+as with the interest he paid the APR was `r round(100*apr_data(sample_paid[1,])$paid, 2)`, almost the same rate. 
+The table we have in the loan tape shows that the APR is `r sample_paid[1,'apr']`
+
+```{r sample_1_paid, echo=FALSE, message = FALSE}
+
+kable(amort_payments_comparisson(sample_paid[1,]))
+
+
+```
+
+
+The second loan (`r as.character(sample_paid[2,]$loanid)`) paid according the amortization table. 
+The amortization interest was
+`r sum(amort_payments_comparisson(sample_paid[2,])$amort_interest_paid, na.rm = T)`, 
+he paid `r sum(amort_payments_comparisson(sample_paid[2,])$interest_paid, na.rm = T)`, a few cents above the previous number.
+
+The amortization interest would have an APR of `r round(100*apr_data(sample_paid[2,])$amort, 2)`, 
+paid `r round(100*apr_data(sample_paid[2,])$paid, 2)`. 
+APR in the loan tape is `r sample_paid[2,'apr']`, 
+`r sample_paid[2,'apr'] - round(100*apr_data(sample_paid[2,])$paid, 2)` percentage points higher than the paid APR.
+
+```{r sample_2_paid, echo=FALSE, message = FALSE}
+
+kable(amort_payments_comparisson(sample_paid[2,]))
+
+```
+
+The third (`r as.character(sample_paid[3,]$loanid)`) paid in just 2 payments, in the first and thrid month. 
+The amortization interest was 
+`r sum(amort_payments_comparisson(sample_paid[3,])$amort_interest_paid, na.rm = T)`, 
+instead he paid `r sum(amort_payments_comparisson(sample_paid[3,])$interest_paid, na.rm = T)`
+
+The amortization interest would have an APR of `r round(100*apr_data(sample_paid[3,])$amort, 2)`, 
+but paid `r round(100*apr_data(sample_paid[3,])$paid, 2)`. 
+APR in loan tape is `r sample_paid[3,'apr']`
+
+```{r sample_3_paid, echo=FALSE, message = FALSE}
+
+kable(amort_payments_comparisson(sample_paid[3,]))
+
+```
+
+The last one (`r as.character(sample_paid[4,]$loanid)`) doesn't have any payments in the database. 
+The amortization interest was 
+`r sum(amort_payments_comparisson(sample_paid[4,])$amort_interest_paid, na.rm = T)`, 
+instead he didn't pay the loan, although it appears as fully paid in the loan tape.
+
+The amortization interest would have an APR of `r round(100*apr_data(sample_paid[4,])$amort, 2)`. 
+Loan tape APR is `r sample_paid[4,'apr']`
+
+```{r sample_4_paid, echo=FALSE, message = FALSE}
+
+kable(amort_payments_comparisson(sample_paid[4,]))
+
+```
+
+
+## Unpaid loans sample
+
+```{r sampling_unpaid, echo=FALSE}
+  
+set.seed(1234)
+sample_unpaid <-
+  loan_tapes[["loan_feed_v1_20200531"]] %>%
+  filter(!(loanstatus %in% c('Not Originated', 'Cancelled'))) %>%
+  sample_n(10)
+
+```
+
+Using the same approach, but now for 4 unpaid loans we will look how the customers behave against the amortization table.
+
+First loan (`r as.character(sample_unpaid[1,]$loanid)` loanid) stop paying in its 5th month.
+The interest amount to be paid from the amortization table would have been 
+`r sum(amort_payments_comparisson(sample_unpaid[1,])$amort_interest_paid, na.rm = T)`, 
+instead he paid `r sum(amort_payments_comparisson(sample_unpaid[1,])$interest_paid, na.rm = T)`
+
+As the APR formula doesn't have any impact on the due loan amount, we will use the same process to calculate it.
+the amortization table would have an APR of `r round(100*apr_data(sample_unpaid[1,])$amort, 2)`, 
+with the interest he paid the APR was `r round(100*apr_data(sample_unpaid[1,])$paid, 2)`. 
+The table we have in the loan tape shows that the APR is `r sample_unpaid[1,'apr']`
+
+```{r sample_1_unpaid, echo=FALSE, message = FALSE}
+
+kable(amort_payments_comparisson(sample_unpaid[1,]))
+
+
+```
+
+
+The second loan (`r as.character(sample_paid[2,]$loanid)`) stop paying in its 2nd month. 
+The amortization interest was 
+`r sum(amort_payments_comparisson(sample_paid[2,])$amort_interest_paid, na.rm = T)`, 
+he paid `r sum(amort_payments_comparisson(sample_paid[2,])$interest_paid, na.rm = T)`.
+
+The amortization interest would have an APR of `r round(100*apr_data(sample_paid[2,])$amort, 2)`, 
+paid `r round(100*apr_data(sample_paid[2,])$paid, 2)`. 
+The table we have in the loan tape shows that the APR is `r sample_paid[2,'apr']`, 
+`r sample_paid[2,'apr'] - round(100*apr_data(sample_paid[2,])$paid, 2)` percentage points higher than the paid APR.
+
+```{r sample_2_unpaid, echo=FALSE, message = FALSE}
+
+kable(amort_payments_comparisson(sample_unpaid[2,]))
+
+```
+
+The third (`r as.character(sample_paid[3,]$loanid)`) has the `r as.character(sample_paid[3,]$loanstatus)` status.
+But it appears that the loan has been paid.
+The amortization interest would be 
+`r sum(amort_payments_comparisson(sample_paid[3,])$amort_interest_paid, na.rm = T)`, 
+instead he paid `r sum(amort_payments_comparisson(sample_paid[3,])$interest_paid, na.rm = T)`
+
+The amortization interest would have an APR of `r round(100*apr_data(sample_paid[3,])$amort, 2)`, 
+but paid `r round(100*apr_data(sample_paid[3,])$paid, 2)`. 
+The table we have in the loan tape shows that the APR is `r sample_paid[3,'apr']`
+
+```{r sample_3_unpaid, echo=FALSE, message = FALSE}
+
+kable(amort_payments_comparisson(sample_unpaid[3,]))
+
+```
+
+The last one (`r as.character(sample_paid[4,]$loanid)`) paid according the amortization table. 
+Although the status that it has in the loan tape is `r as.character(sample_paid[4,]$loanstatus)`.
+The amortization interest would be 
+`r sum(amort_payments_comparisson(sample_paid[4,])$amort_interest_paid, na.rm = T)`, he paid `r sum(amort_payments_comparisson(sample_paid[4,])$interest_paid, na.rm = T)`, a few cents more than the amortization table.
+
+The amortization interest would have an APR of `r round(100*apr_data(sample_paid[4,])$amort, 2)`, 
+but paid `r round(100*apr_data(sample_paid[4,])$paid, 2)`. 
+The table we have in the loan tape shows that the APR is `r sample_paid[4,'apr']`
+
+```{r sample_4_unpaid, echo=FALSE, message = FALSE}
+
+kable(amort_payments_comparisson(sample_unpaid[4,]))
+
+```

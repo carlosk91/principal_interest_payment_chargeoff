@@ -23,6 +23,8 @@ dates_not_to_consider <- function(to_charge_off = F) {
         '2017-01-01',
         '2017-02-01',
         '2017-05-01',
+        '2017-07-01',
+        '2017-10-01',
         '2017-12-01',
         '2018-03-01',
         '2018-04-01',
@@ -36,11 +38,15 @@ dates_not_to_consider <- function(to_charge_off = F) {
       c(
         '2017-06-01',
         '2017-08-01',
+        '2019-06-01',
         '2019-07-01',
         '2019-08-01',
         '2019-09-01',
         '2019-10-01',
-        '2019-11-01'
+        '2019-11-01',
+        '2019-12-01',
+        '2020-01-01',
+        '2020-02-01',
       )
     ))
   }
@@ -95,6 +101,7 @@ monthly_payments_summary_fun <-
            max_months_after_term = NA,
            only_post_term_vintages = F,
            all_dates = F,
+           variable_used = principal_paid,
            ...) {
     quo_group_var <- enquos(...)
     max_months <- case_when(is.na(max_months_after_term) ~ 0,
@@ -107,7 +114,7 @@ monthly_payments_summary_fun <-
         case_when(all_dates ~ T,
                   T ~ !(vintage %in% dates_not_to_consider())),
         vintage >= as_date('2017-01-01'),
-        is.na(principal_paid) == F,
+        is.na(!!enquo(variable_used)) == F,
         case_when(
           only_post_term_vintages == T ~
             vintage <=
@@ -129,12 +136,12 @@ monthly_payments_summary_fun <-
       group_by(!!!quo_group_var,
                original_term_to_maturity,
                months_in_books) %>%
-      summarise(principal_paid = sum(principal_paid, na.rm = T)) %>%
+      summarise(amount_paid = sum(!!enquo(variable_used), na.rm = T)) %>%
       mutate(
-        principal_paid_share = principal_paid /
-          sum(principal_paid),
-        principal_paid_cumulative_share = cumsum(principal_paid) /
-          sum(principal_paid)
+        amount_paid_share = amount_paid /
+          sum(amount_paid),
+        amount_paid_cumulative_share = cumsum(amount_paid) /
+          sum(amount_paid)
       ) %>%
       ungroup()
   }
@@ -142,7 +149,8 @@ monthly_payments_summary_fun <-
 lineplot_principal_paid_share <-
   function(data,
            group_var = NULL,
-           term = 11) {
+           term = 11,
+           var = 'Principal') {
     # handling NULL name
     if (missing(group_var)) {
       group_variable <- ""
@@ -156,15 +164,15 @@ lineplot_principal_paid_share <-
       filter(original_term_to_maturity == term) %>%
       ggplot(aes(
         x = months_in_books,
-        y = principal_paid_share,
+        y = amount_paid_share,
         color = as.character(!!group_variable)
       )) +
       geom_line() +
       labs(
-        title = 'Principal paid share among the months in books',
+        title = glue('{var} paid share among the months in books'),
         color = glue('{term} term loans'),
         x = 'Months on books',
-        y = 'Principal paid share'
+        y = glue('{var} paid share')
       ) +
       scale_y_continuous(labels = scales::percent)
     return(plot)
@@ -173,7 +181,7 @@ lineplot_principal_paid_share <-
 term_simulation_payments <-
   function(base_term,
            term_to_simulate,
-           starting_mb_to_long = 2,
+           starting_mb_to_extend = 2,
            extra_payment_months = 2,
            ending_mb_to_long = NA) {
     if (is.na(ending_mb_to_long)) {
@@ -221,7 +229,7 @@ term_simulation_payments <-
               term_to_simulate +
               months_in_books -
               original_term_to_maturity,
-            months_in_books < starting_mb_to_long ~ months_in_books,
+            months_in_books < starting_mb_to_extend ~ months_in_books,
             T ~ months_in_books *
               (
                 1 + (term_to_simulate - original_term_to_maturity) /
@@ -238,7 +246,7 @@ term_simulation_payments <-
           credit_segment == lead(credit_segment) &
             vertical == lead(vertical) &
             between(months_in_books,
-                    starting_mb_to_long - 1,
+                    starting_mb_to_extend - 1,
                     ending_mb_to_long) ~
             (lead(principal_paid_share) -
                principal_paid_share) /
@@ -251,7 +259,7 @@ term_simulation_payments <-
         expand_grid(
           original_term_to_maturity = term_to_simulate,
           months_in_books =
-            starting_mb_to_long:(term_to_simulate -
+            starting_mb_to_extend:(term_to_simulate -
                                    base_term +
                                    ending_mb_to_long),
           credit_segment =
@@ -298,8 +306,8 @@ term_simulation_payments <-
 term_simulation_charge_off <-
   function(base_term,
            term_to_simulate,
-           starting_mb_to_long = 6,
-           months_to_charge_off = 2,
+           starting_mb_to_extend = 6,
+           months_to_charge_off = 4,
            ending_mb_to_long = NA) {
     if (is.na(ending_mb_to_long)) {
       ending_mb_to_long <-
@@ -348,7 +356,7 @@ term_simulation_charge_off <-
               term_to_simulate +
               months_in_books -
               original_term_to_maturity,
-            months_in_books < starting_mb_to_long ~ months_in_books,
+            months_in_books < starting_mb_to_extend ~ months_in_books,
             T ~ months_in_books *
               (
                 1 + (term_to_simulate - original_term_to_maturity) /
@@ -365,7 +373,7 @@ term_simulation_charge_off <-
           credit_segment == lead(credit_segment) &
             vertical == lead(vertical) &
             between(months_in_books,
-                    starting_mb_to_long - 1,
+                    starting_mb_to_extend - 1,
                     ending_mb_to_long) ~
             (lead(chargeoffprincipal_share) -
                chargeoffprincipal_share) /
@@ -378,7 +386,7 @@ term_simulation_charge_off <-
         expand_grid(
           original_term_to_maturity = term_to_simulate,
           months_in_books =
-            starting_mb_to_long:(term_to_simulate -
+            starting_mb_to_extend:(term_to_simulate -
                                    base_term +
                                    ending_mb_to_long),
           credit_segment =
@@ -687,7 +695,7 @@ principalpaid_df_bt <- function(first_vintage = '2017-01-01',
 }
 
 chargeoff_df_bt <- function(first_vintage = '2017-01-01',
-                            additional_months = 2){
+                            additional_months = 4){
   
   monthly_records[['monthly_principal_chargeoff']] %>%
     mutate(
@@ -724,8 +732,6 @@ chargeoff_df_bt <- function(first_vintage = '2017-01-01',
     arrange(
       vintage_year,
       year_calendar,
-      vintage_month,
-      month_calendar,
       original_term_to_maturity,
       months_in_books,
       credit_segment,
@@ -734,8 +740,6 @@ chargeoff_df_bt <- function(first_vintage = '2017-01-01',
     group_by(
       vintage_year,
       year_calendar,
-      vintage_month,
-      month_calendar,
       original_term_to_maturity,
       months_in_books,
       credit_segment,
@@ -744,7 +748,6 @@ chargeoff_df_bt <- function(first_vintage = '2017-01-01',
     summarise(chargeoffprincipal_sum = sum(chargeoffprincipal, na.rm = T)) %>%
     ungroup() %>%
     group_by(vintage_year,
-             vintage_month,
              original_term_to_maturity,
              credit_segment,
              vertical) %>%
@@ -752,6 +755,6 @@ chargeoff_df_bt <- function(first_vintage = '2017-01-01',
              sum(chargeoffprincipal_sum)) %>%
     filter(!(n() <= 1)) %>%
     ungroup() %>%
-    select(-c(chargeoffprincipal_sum, vintage_month))
+    select(-c(chargeoffprincipal_sum))
   
 }

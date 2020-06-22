@@ -3,7 +3,7 @@
 monthly_chargeoff_fcst <- chargeoff_df_bt()
 
 #Boosting
-Ntrees <- 10000
+Ntrees <- 1000
 Idepth <- 7
 Shrink <- 0.001
 pred.boost <- c()

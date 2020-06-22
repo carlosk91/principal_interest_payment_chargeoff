@@ -2,6 +2,7 @@
 # Version 0.4
 # Last modification date 21 Jun 2020
 # Updates: Change to 60 days to charge off
+# credit suisse
 
 source('libraries.R')
 source('functions.R')
