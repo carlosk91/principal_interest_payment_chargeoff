@@ -24,8 +24,8 @@ bt_model_charge_off <-
       data = monthly_chargeoff_fcst %>%
         filter(!is.na(charge_off_principal_share)))
 
-vintage <- seq_months_to_forecast()
-months <- seq_months_to_forecast(end_date = '2023-12-01')
+vintage <- seq_months_to_forecast(end_date = '2020-12-01')
+months <- seq_months_to_forecast()
 original_term_to_maturity <- c(3, 6, 11)
 credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
 vertical <- c('Air', 'Cruise', 'Other', 'Package')

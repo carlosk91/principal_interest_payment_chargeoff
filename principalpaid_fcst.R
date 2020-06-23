@@ -24,7 +24,7 @@ bt_model_principal_paid <-
       data = monthly_payments_for_bt %>%
         filter(!is.na(principal_paid_share)))
 
-vintage <- seq_months_to_forecast()
+vintage <- seq_months_to_forecast(end_date = '2020-12-01')
 months <- seq_months_to_forecast()
 original_term_to_maturity <- c(3, 6, 11)
 credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
@@ -51,7 +51,7 @@ vintages_mb <-
     vertical
   )  %>%
   filter(months_in_books >= 0,
-         original_term_to_maturity + 2 >= months_in_books,)
+         original_term_to_maturity + 2 >= months_in_books)
 
 
 pred.boost <-

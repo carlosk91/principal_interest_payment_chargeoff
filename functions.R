@@ -9,7 +9,7 @@ closing_month <-
 
 seq_months_to_forecast <-
   function(start_date = '2017-01-01',
-           end_date = '2022-12-01') {
+           end_date = '2025-12-01') {
     seq(from = as.Date(start_date),
         to = as.Date(end_date),
         by = "month")
