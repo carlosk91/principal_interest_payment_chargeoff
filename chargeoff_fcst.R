@@ -24,7 +24,7 @@ bt_model_charge_off <-
       data = monthly_chargeoff_fcst %>%
         filter(!is.na(charge_off_principal_share)))
 
-vintage <- seq_months_to_forecast(end_date = '2020-12-01')
+vintage <- seq_months_to_forecast(end_date = '2022-12-01')
 months <- seq_months_to_forecast()
 original_term_to_maturity <- c(3, 6, 11)
 credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
@@ -46,12 +46,12 @@ vintages_mb <-
     vintage_month = months(months),
     month_calendar = months(months),
     original_term_to_maturity,
-    months_in_books = month_diff(vintage, months),
+    months_on_books = month_diff(vintage, months),
     credit_segment,
     vertical
   )  %>%
-  filter(months_in_books > 2,
-         original_term_to_maturity + 2 >= months_in_books,)
+  filter(months_on_books > 2,
+         original_term_to_maturity + 2 >= months_on_books,)
 
 
 pred.boost <-
@@ -64,14 +64,14 @@ monthly_charge_off_for_terms_simulation_18months <-
               term_simulation_charge_off(base_term = 11,
                                          term_to_simulate = 18)) %>%
   mutate(months = vintage %m+%
-           months(months_in_books))
+           months(months_on_books))
 
 monthly_charge_off_for_terms_simulation_24months <-
   expand_grid(vintage,
               term_simulation_charge_off(base_term = 11,
                                          term_to_simulate = 24)) %>%
   mutate(months = vintage %m+%
-           months(months_in_books))
+           months(months_on_books))
 
 df_pronostico_chargeoff_share <-
   as_tibble(cbind(vintages_mb, pred.boost)) %>%
