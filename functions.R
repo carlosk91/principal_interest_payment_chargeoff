@@ -252,9 +252,11 @@ term_simulation_payments <-
         trend = case_when(
           credit_segment == lead(credit_segment) &
             vertical == lead(vertical) &
-            between(months_on_books,
-                    starting_mb_to_extend - 1,
-                    ending_mb_to_long) ~
+            between(
+              months_on_books,
+              starting_mb_to_extend - 1,
+              ending_mb_to_long
+            ) ~
             (lead(principal_paid_share) -
                principal_paid_share) /
             (lead(months_on_books) - months_on_books)
@@ -267,8 +269,8 @@ term_simulation_payments <-
           original_term_to_maturity = term_to_simulate,
           months_on_books =
             starting_mb_to_extend:(term_to_simulate -
-                                   base_term +
-                                   ending_mb_to_long),
+                                     base_term +
+                                     ending_mb_to_long),
           credit_segment =
             c('Prime', 'NearPrime', 'SubPrime'),
           vertical =
@@ -374,29 +376,34 @@ term_simulation_charge_off <-
       mutate(
         trend = case_when(
           credit_segment == lead(credit_segment) &
-            between(months_on_books,
-                    starting_mb_to_extend - 1,
-                    ending_mb_to_long) ~
+            between(
+              months_on_books,
+              starting_mb_to_extend - 1,
+              ending_mb_to_long
+            ) ~
             (lead(chargeoffprincipal_share) -
                chargeoffprincipal_share) /
             (lead(months_on_books) - months_on_books)
         ),
         prev_chargeoffprincipal_share = chargeoffprincipal_share,
         prev_month_on_books = months_on_books
-      ) %>% 
-      left_join(as_tibble(cbind(original_term_to_maturity = term_to_simulate,
-                          vertical =
-                            c('Air', 'Cruise', 'Other', 'Package'))) %>% 
-                  mutate(original_term_to_maturity = 
-                           as.double(original_term_to_maturity))
-                ) %>%
+      ) %>%
+      left_join(as_tibble(
+        cbind(
+          original_term_to_maturity = term_to_simulate,
+          vertical =
+            c('Air', 'Cruise', 'Other', 'Package')
+        )
+      ) %>%
+        mutate(original_term_to_maturity =
+                 as.double(original_term_to_maturity))) %>%
       bind_rows(
         expand_grid(
           original_term_to_maturity = term_to_simulate,
           months_on_books =
             starting_mb_to_extend:(term_to_simulate -
-                                   base_term +
-                                   ending_mb_to_long),
+                                     base_term +
+                                     ending_mb_to_long),
           credit_segment =
             c('Prime', 'NearPrime', 'SubPrime'),
           vertical =
@@ -613,7 +620,8 @@ apr_data <- function(data) {
 
 monthly_chargeoff_vintage_summary <- function(term_filter = 3) {
   monthly_records[['monthly_principal_chargeoff']] %>%
-    filter(original_term_to_maturity == term_filter,!(vintage %in% dates_not_to_consider())) %>%
+    filter(original_term_to_maturity == term_filter,
+           !(vintage %in% dates_not_to_consider())) %>%
     mutate(months_on_books = month_diff(vintage, chargeoffmonth)) %>%
     group_by(vintage,
              months_on_books) %>%
@@ -703,8 +711,7 @@ principalpaid_df_bt <- function(first_vintage = '2017-01-01',
 }
 
 chargeoff_df_bt <- function(first_vintage = as_date('2017-01-01'),
-                            additional_months = 4){
-  
+                            additional_months = 4) {
   monthly_records[['monthly_principal_chargeoff']] %>%
     mutate(
       chargeoffmonth =
@@ -765,4 +772,20 @@ chargeoff_df_bt <- function(first_vintage = as_date('2017-01-01'),
     ungroup() %>%
     select(-c(chargeoffprincipal_sum))
   
+}
+
+charge_off_summary_by_segment <- function(term = 11) {
+  monthly_records[['monthly_principal_chargeoff']] %>%
+    filter(original_term_to_maturity == term) %>%
+    mutate(months_in_books = month_diff(vintage, chargeoffmonth)) %>%
+    group_by(credit_segment,
+             months_in_books) %>%
+    summarise(chargeoff_principal = sum(chargeoffprincipal, na.rm = T)) %>%
+    ungroup() %>%
+    group_by(credit_segment) %>%
+    mutate(chargeoff_principal_share = chargeoff_principal /
+             sum(chargeoff_principal)) %>%
+    ungroup() %>%
+    select(-chargeoff_principal) %>%
+    as_tibble()
 }

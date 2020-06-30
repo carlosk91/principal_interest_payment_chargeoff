@@ -219,7 +219,7 @@
 #### Principal charge off ####
 {
   ##### Total #####
-  
+
   monthly_chargeoff_summary <-
     monthly_records[['monthly_principal_chargeoff']] %>%
     mutate(months_in_books = month_diff(vintage, chargeoffmonth)) %>%
@@ -253,18 +253,23 @@
   
   ##### By segment #####
   
-  monthly_chargeoff_summary <-
-    monthly_records[['monthly_principal_chargeoff']] %>%
-    mutate(months_in_books = month_diff(vintage, chargeoffmonth)) %>%
-    group_by(original_term_to_maturity,
-             months_in_books) %>%
-    summarise(chargeoff_principal = sum(chargeoffprincipal, na.rm = T)) %>%
-    ungroup() %>%
-    group_by(original_term_to_maturity) %>%
-    mutate(chargeoff_principal_share = chargeoff_principal /
-             sum(chargeoff_principal)) %>%
-    ungroup() %>%
-    select(-chargeoff_principal)
+  monthly_chargeoff_cs_summary <- charge_off_summary_by_segment(term = 11)
+  
+  monthly_chargeoff_cs_summary %>%
+    ggplot(aes(
+      x = months_in_books,
+      y = chargeoff_principal_share,
+      color = as.character(credit_segment)
+    )) +
+    geom_line() +
+    labs(
+      title = 'Principal paid share among the months in books',
+      color = 'Credt segment',
+      x = 'Months on books',
+      y = 'Principal paid share'
+    ) +
+    scale_y_continuous(labels = scales::percent) +
+    scale_x_continuous(breaks = round(seq(1, 25, by = 1), 1))
   
   ##### By vintage #####
   

@@ -19,9 +19,120 @@ options(knitr.kable.NA = 0)
 
 ```
 
+# Session: Financial needs translation
+
+## Goals
+
+1.- Get to breakeven at June 2021
+2.- Maximize our revenue as company
+3.- Understand how our unit economics will be in the future
+
+## What are we building?
+
+In order to help Uplift to get to the goals we are building a financial model in Quantrix. 
+This shows us the financial position of the company month over month considering multiple dimensions and decisions.
+
+## What are we seeing?
+
+The way that the users are paying the loan is not as the way an amortization table looks. Not only the term, but the credit segment, vertical, and even the vintage the users got their loan appears to be variables that impact on the payment behavior.
+
+In order to create a more realistic financial planning and make decisions to get the first goal done, we need to have a realistic approach to the payment behavior of our costumers. If we use a non-data driven approach (amortization table as it is) the reality is that we could be trying to do things that won't help enough to get us to that goal.
+
+## What do we need?
+
+We need it to be as realistic as possible. Payment behavior, charge off behavior, vintage loss rate, originations, etc..., all of these are very important inputs that allow us to build the financial model.
+
+An input with the realistic payment behavior, across the months on books for each segment, vintage, vertical and term, would help us to have a confident call on when we will get to that goal, and how to do it possible.
+
+This next two things are necessary:
+The curves of principal payment (will help us understand the cashflow incomes across the months).
+The curves of charge off (will help us to understand how our balance sheet will be month over month).
+
+## What are the curves?
+
+We already have the originations for the future months (actually this could be an input to help us get faster to the goal). We also have the percentage of loan amount that will no get paid (Vintage loss rate). We are assuming that the amount that is getting paid will be the only one to pay interest.
+
+The payment curves represent how much of the 100% of principal paid (loan amount * (1-VLR)) will be paid across the months on books. This doesn't consider down payments, as NLS doesn't show us the amount that is being paid on the first day of loan.
+$y_{ijkl} = \frac{principalpaid_{ijkl}}{\sum_{i}^{n}principalpaid_{ijkl}}$
+Where i is the month on book, n is the limit of month on books (what I saw is term + 2), j is the credit segment, k is the vertical, and l is the vintage. So practically y is the share of principal paid segmented by credit segment, vertical and vintage
+
+The charge off curves represent how much of the 100% of charge off (loan amount * VLR) will be written off across the months on books. This assumes the same behavior that the NLS is recording on charge off.
+The function would be like this
+$y_{ijkl} = \frac{chargeoff_{ijkl}}{\sum_{i}^{n}chargeoff_{ijkl}}$
+
+### Principal paid curve
+
+I.e. this loan appears that paid before than his last due date of the amortization table.
+```{r amort_table_ex, echo=FALSE, message = FALSE}
+set.seed(1234)
+sample_paid <-
+  loan_tapes[["loan_feed_v1_20200531"]] %>%
+  filter(loanstatus == 'Fully Paid') %>%
+  sample_n(10)
+
+kable(amort_payments_comparisson(sample_paid[1,]))
+
+
+```
+
+If we place all the vintages of the 11 term loans having the credit segment as a grouping variable, we can see the principal payment curves among the month on books. 
+```{r principal_paid_curves_segment, echo=FALSE, message = FALSE}
+
+  monthly_payments_summary_credit_segment <-
+    monthly_payments_summary_fun(max_months_after_term = 2,
+                                 credit_segment = credit_segment)
+  
+  lineplot_principal_paid_share(data = monthly_payments_summary_credit_segment,
+                                group_var = credit_segment,
+                                term = 11)
+
+```
+
+The same happens with the vertical, it appears that also what the users is asking their loan for impacts on how they behave.
+```{r principal_paid_curves_vertical, echo=FALSE, message = FALSE}
+
+  monthly_payments_summary_credit_vertical <-
+    monthly_payments_summary_fun(max_months_after_term = 2,
+                                 vertical = vertical)
+  
+  lineplot_principal_paid_share(data = monthly_payments_summary_credit_vertical,
+                                group_var = vertical,
+                                term = 11)
+
+```
+
+
+### Charge off curve
+
+The charge off could be explained the same way as the share of principal paid
+
+
+```{r charge_off_curves, echo=FALSE, message = FALSE}
+
+  monthly_chargeoff_cs_summary <- charge_off_summary_by_segment(term = 11)
+  
+  monthly_chargeoff_cs_summary %>%
+    ggplot(aes(
+      x = months_in_books,
+      y = chargeoff_principal_share,
+      color = as.character(credit_segment)
+    )) +
+    geom_line() +
+    labs(
+      title = 'Charge off share among the months in books',
+      color = '11 term loans',
+      x = 'Months on books',
+      y = 'Charge off share'
+    ) +
+    scale_y_continuous(labels = scales::percent) +
+    scale_x_continuous(breaks = round(seq(1, 25, by = 1), 1))
+
+```
+
+
 # Forecasting the payment behavior {.tabset}
 
-The behavior of the payments of each loan will help us understand how our income will be given any origination. 
+The behavior of the payments of each loan will help us understand how our income will be, given any origination. 
 Using the total amount of principal paid as a 100% (this would be seen as the $loanamount(1-VLR)$). Each of the credit segments, verticals, and terms should have an specific behavior for the months on books.
 
 ## Behavior of principal payment
