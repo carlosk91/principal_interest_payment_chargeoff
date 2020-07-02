@@ -1,3 +1,12 @@
+
+last_vintage_to_fcst <- function(limit_year = 2024){
+  as_date(glue('{limit_year}-12-01'))
+}
+
+last_month_to_fcst <- function(limit_year = 2024){
+  as_date(glue('{limit_year}-12-01'))
+}
+
 closing_month <-
   function(date = floor_date(Sys.Date() -
                                mday(Sys.Date()),

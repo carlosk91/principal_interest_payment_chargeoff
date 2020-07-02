@@ -24,7 +24,7 @@ bt_model_principal_paid <-
       data = monthly_payments_for_bt %>%
         filter(!is.na(principal_paid_share)))
 
-vintage <- seq_months_to_forecast(end_date = '2022-12-01')
+vintage <- seq_months_to_forecast(end_date = last_vintage_to_fcst())
 months <- seq_months_to_forecast()
 original_term_to_maturity <- c(3, 6, 11)
 credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
@@ -108,4 +108,4 @@ df_pronostico_principalpaid_share <-
     monthly_payments_for_terms_simulation_18months,
     monthly_payments_for_terms_simulation_24months
   ) %>%
-  filter(vintage < as_date('2023-01-01'))
+  filter(vintage <= as_date(last_vintage_to_fcst()))

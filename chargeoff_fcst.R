@@ -24,7 +24,7 @@ bt_model_charge_off <-
       data = monthly_chargeoff_fcst %>%
         filter(!is.na(charge_off_principal_share)))
 
-vintage <- seq_months_to_forecast(end_date = '2022-12-01')
+vintage <- seq_months_to_forecast(end_date = last_vintage_to_fcst())
 months <- seq_months_to_forecast()
 original_term_to_maturity <- c(3, 6, 11)
 credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
@@ -99,4 +99,4 @@ df_pronostico_chargeoff_share <-
     monthly_charge_off_for_terms_simulation_18months,
     monthly_charge_off_for_terms_simulation_24months
   ) %>%
-  filter(vintage < as_date('2023-01-01'))
+  filter(vintage <= last_vintage_to_fcst())
