@@ -1,10 +1,20 @@
+#### Libraries for algo ####
 library(tidyverse)
-library(lubridate, warn.conflicts = FALSE)
-library(fpp2)
-library(TTR)
-library(tidymodels)
-library(xgboost)
 library(glue)
 library(FinancialMath)
-library(knitr)
-library(plotly)
+library(capitalR)
+library(lubridate)
+library(magrittr)
+library(h2o)
+library(furrr)
+library(progressr)
+plan(multisession, workers = 7)
+
+h2o.init()
+# h2o.clusterInfo()
+# h2o.shutdown(prompt = TRUE)
+
+
+
+
+

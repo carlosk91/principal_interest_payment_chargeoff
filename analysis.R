@@ -1,6 +1,5 @@
 
 
-
 #### Principal income ####
 {
   ##### Total #####
@@ -164,8 +163,7 @@
     ) %>%
     mutate(months_in_books = month_diff(vintage, months)) %>%
     filter(vintage <= months,
-           original_term_to_maturity + 2 >= months_in_books,
-    ) %>%
+           original_term_to_maturity + 2 >= months_in_books,) %>%
     arrange(vintage, months, original_term_to_maturity) %>%
     left_join(monthly_payments_summary_credit_vertical) %>%
     filter(!(original_term_to_maturity %in% c(12, 18, 24)))
@@ -177,7 +175,6 @@
 
 #### Interest income ####
 {
-
   monthly_interest_payments_summary_vintage <-
     monthly_payments_summary_fun(
       only_post_term_vintages = T,
@@ -219,7 +216,7 @@
 #### Principal charge off ####
 {
   ##### Total #####
-
+  
   monthly_chargeoff_summary <-
     monthly_records[['monthly_principal_chargeoff']] %>%
     mutate(months_in_books = month_diff(vintage, chargeoffmonth)) %>%
@@ -253,7 +250,8 @@
   
   ##### By segment #####
   
-  monthly_chargeoff_cs_summary <- charge_off_summary_by_segment(term = 11)
+  monthly_chargeoff_cs_summary <-
+    charge_off_summary_by_segment(term = 11)
   
   monthly_chargeoff_cs_summary %>%
     ggplot(aes(
@@ -422,3 +420,4 @@
   #   geom_line(aes(y = .fitted))
   
 }
+

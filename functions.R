@@ -1,9 +1,11 @@
 
-last_vintage_to_fcst <- function(limit_year = 2024){
+source('~/Documents/git/database_connection/db_connection.R')
+
+last_vintage_to_fcst <- function(limit_year = 2026){
   as_date(glue('{limit_year}-12-01'))
 }
 
-last_month_to_fcst <- function(limit_year = 2024){
+last_month_to_fcst <- function(limit_year = 2026){
   as_date(glue('{limit_year}-12-01'))
 }
 
@@ -18,7 +20,7 @@ closing_month <-
 
 seq_months_to_forecast <-
   function(start_date = '2017-01-01',
-           end_date = '2025-12-01') {
+           end_date = last_vintage_to_fcst()) {
     seq(from = as.Date(start_date),
         to = as.Date(end_date),
         by = "month")
@@ -70,52 +72,72 @@ dates_not_to_consider <- function(to_charge_off = F) {
   return(dates)
 }
 
-read_csvs <- function(files_name = NA,
-                      file_path = NA) {
-  if (is.na(files_name)) {
-    files_name <- list.files(path = case_when(is.na(file_path) ~ ".",
-                                              T ~ file_path),
-                             pattern = '.csv')
+month_seq <- function(start_date, term) {
+  add_with_rollback(as_date(start_date), months(1:term))
+}
+
+month_dif <- function(start_date, end_date) {
+  x <- interval(start_date,
+                end_date) %/% months(1)
+  return(x)
+}
+
+replace_nan <- function(x, replace_with) {
+  x <- if (is.na(x)) {
+    replace_with
+  } else{
+    x
   }
+  return(x)
+}
+
+col_names_cleaning <- function(data) {
+  data %>%
+    rename(setNames(names(.), tolower(gsub(" ", "_", names(
+      .
+    )))))
+}
+
+amortization_table <- function(data, index_set) {
   
-  csv_files <- lapply(glue("{file_path}{files_name}", .na = ""),
-                      read_csv)
-  names(csv_files) <- gsub(pattern = '.csv',
-                           replacement = '',
-                           x = tolower(files_name))
-  for (i in seq_along(csv_files)) {
-    colnames(csv_files[[i]]) <- gsub(
-      pattern = '.csv',
-      replacement = '',
-      x = gsub(
-        pattern = '-',
-        replacement = '',
-        x = tolower(colnames(csv_files[[i]]))
-      )
+  
+  originations_forecast %>%
+    filter(index == index_set) %>%
+    do(as.data.frame(
+      amort.table(
+        Loan = .$loan_amount,
+        n = .$original_term_to_maturity,
+        i = .$wa_interest_rate
+      )$Schedule
+    )) %>%
+    mutate(
+      index_set,
+      month_on_book = as.numeric(rownames(.))
+    ) %>%
+    col_names_cleaning() %>%
+    select(
+      index = index_set,
+      month_on_book,
+      principal_amortization = principal_paid
     )
-  }
-  
-  names(csv_files) <-
-    gsub(pattern = '-',
-         replacement = '_',
-         x = names(csv_files))
-  
-  return(csv_files)
 }
 
-month_number <- function(date) {
-  lt <- as.POSIXlt(as.Date(date, origin = "1900-01-01"))
-  lt$year * 12 + lt$mon
-}
+handlers("progress")
+amortization_mapping <- function(data, x) {
 
-month_diff <- function(start_date, end_date) {
-  month_number(end_date) - month_number(start_date)
+  p <- progressor(steps = length(x))
+  
+  future_map_dfr(x, ~ {
+    p()
+    amortization_table(data, .x)
+  }, options(future.debug = F))
 }
 
 monthly_payments_summary_fun <-
-  function(data = 'monthly_payments',
+  function(data = monthly_cashflows,
            max_months_after_term = NA,
            only_post_term_vintages = F,
+           with_subvention = F,
            all_dates = F,
            variable_used = principal_paid,
            ...) {
@@ -123,18 +145,20 @@ monthly_payments_summary_fun <-
     max_months <- case_when(is.na(max_months_after_term) ~ 0,
                             T ~ as.numeric(max_months_after_term))
     
-    monthly_records[[data]] %>%
+    data %>%
       mutate(months_on_books = month_diff(start_date = vintage,
-                                          end_date = payment_month)) %>%
+                                          end_date = transaction_month)) %>%
       filter(
         case_when(all_dates ~ T,
                   T ~ !(vintage %in% dates_not_to_consider())),
         vintage >= as_date('2017-01-01'),
+        case_when(with_subvention ~ T,
+                  T ~ subvention_flag == 0),
         is.na(!!enquo(variable_used)) == F,
         case_when(
           only_post_term_vintages == T ~
             vintage <=
-            max(monthly_records[[data]]$vintage, na.rm = T) %m-%
+            max(data$vintage, na.rm = T) %m-%
             months(original_term_to_maturity +
                      max_months),
           only_post_term_vintages == F ~
@@ -206,16 +230,16 @@ term_simulation_payments <-
     
     vertical <- c('Air', 'Cruise', 'Other', 'Package')
     
-    monthly_records[['monthly_payments']] %>%
+    monthly_cashflows %>%
       mutate(months_on_books = month_diff(start_date = vintage,
-                                          end_date = payment_month)) %>%
+                                          end_date = transaction_month)) %>%
       filter(
         !(vintage %in% dates_not_to_consider()),
         vintage >= as_date('2017-01-01'),
         is.na(principal_paid) == F,
         original_term_to_maturity == base_term,
         vintage <=
-          max(monthly_records[['monthly_payments']]$vintage, na.rm = T) %m-%
+          max(monthly_cashflows$vintage, na.rm = T) %m-%
           months(original_term_to_maturity +
                    extra_payment_months),
         months_on_books <=
@@ -334,7 +358,7 @@ term_simulation_charge_off <-
     
     vertical <- c('Air', 'Cruise', 'Other', 'Package')
     
-    monthly_records[['monthly_principal_chargeoff']] %>%
+    monthly_cashflows %>%
       mutate(months_on_books = month_diff(start_date = vintage,
                                           end_date = chargeoffmonth)) %>%
       filter(
@@ -343,7 +367,7 @@ term_simulation_charge_off <-
         is.na(chargeoffprincipal) == F,
         original_term_to_maturity == base_term,
         vintage <=
-          max(monthly_records[['monthly_principal_chargeoff']]$vintage,
+          max(monthly_cashflows$vintage,
               na.rm = T) %m-%
           months(original_term_to_maturity +
                    months_to_charge_off),
@@ -459,18 +483,18 @@ term_simulation_charge_off <-
 create_amort_table <- function(data) {
   amort_table <-
     amort.table(
-      Loan = data$loanamount,
-      n = data$term,
-      i = data$borrowerinterestrate / 100,
+      Loan = data$loan_amount,
+      n = data$original_term_to_maturity,
+      i = data$original_interest_rate / 100,
       ic = 12,
       pf = 12
     )$Schedule %>%
     as_tibble() %>%
     transmute(
-      loanid = data$loanid,
-      loanamount = data$loanamount,
-      borrowerinterestrate = data$borrowerinterestrate,
-      term = data$term,
+      loan_id = data$loan_id,
+      loanamount = data$loan_amount,
+      borrowerinterestrate = data$original_interest_rate,
+      term = data$original_term_to_maturity,
       tenure = round(Year * 12),
       amort_payment = Payment,
       amort_principal_paid = `Principal Paid`,
@@ -483,14 +507,11 @@ create_amort_table <- function(data) {
 create_real_payments <- function(data) {
   real_payments <- data %>%
     transmute(
-      loanid,
-      loanamount,
-      term,
-      borrowerinterestrate,
-      monthlyvintage = floor_date(as_date(paste0(
-        monthlyvintage, "-01"
-      )),
-      "month"),
+      loan_id,
+      loan_amount,
+      original_term_to_maturity,
+      original_interest_rate,
+      monthlyvintage = vintage,
       current_tenure = month_diff(
         start_date = monthlyvintage,
         end_date = as_date(closing_month())
@@ -500,8 +521,8 @@ create_real_payments <- function(data) {
     inner_join(
       loan_tapes[["loans_payments_by_month"]] %>%
         transmute(
-          loanid,
-          payment_month = as_date(payment_month),
+          loan_id,
+          transaction_month = as_date(transaction_month),
           principal_paid,
           interest_paid
         )
@@ -510,8 +531,8 @@ create_real_payments <- function(data) {
   real_payments %<>%
     mutate(tenure =
              month_diff(start_date = monthlyvintage,
-                        end_date = payment_month)) %>%
-    arrange(payment_month)
+                        end_date = transaction_month)) %>%
+    arrange(transaction_month)
   
   return(real_payments)
 }
@@ -520,10 +541,10 @@ amort_payments_comparisson <- function(data) {
   create_amort_table(data) %>%
     left_join(create_real_payments(data)) %>%
     select(
-      loanid,
-      term,
-      loanamount,
-      borrowerinterestrate,
+      loan_id,
+      original_term_to_maturity,
+      loan_amount,
+      original_interest_rate,
       tenure,
       amort_payment,
       amort_principal_paid,
@@ -545,17 +566,14 @@ amount_paid_by_loan <- function() {
 
 apr_summary <- function(paid_loans = T,
                         at_least_2_months = T) {
-  loan_tapes[["loan_feed_v1_20200531"]] %>%
+  loan_tape %>%
     filter(case_when(paid_loans ~ loanstatus == 'Fully Paid',
                      T ~ T)) %>%
     transmute(
       loanid,
-      loanamount,
-      term,
-      monthlyvintage = floor_date(as_date(paste0(
-        monthlyvintage, "-01"
-      )),
-      "month"),
+      loan_amount,
+      original_term_to_maturity,
+      monthlyvintage = vintage,
       current_tenure = month_diff(
         start_date = monthlyvintage,
         end_date = max(monthlyvintage)
@@ -665,14 +683,14 @@ graph_charge_off_vintage <- function(term_filter) {
 
 principalpaid_df_bt <- function(first_vintage = '2017-01-01',
                                 additional_months = 2) {
-  monthly_records[['monthly_payments']] %>%
+  monthly_cashflows %>%
     mutate(
       months_on_books = month_diff(start_date = vintage,
-                                   end_date = payment_month),
+                                   end_date = transaction_month),
       vintage_year = year(vintage),
-      year_calendar = year(payment_month),
+      year_calendar = year(transaction_month),
       vintage_month  = months(vintage),
-      month_calendar = months(payment_month)
+      month_calendar = months(transaction_month)
     ) %>%
     filter(
       !(vintage %in% dates_not_to_consider()),
@@ -680,7 +698,7 @@ principalpaid_df_bt <- function(first_vintage = '2017-01-01',
       is.na(principal_paid) == F,
       original_term_to_maturity %in% c(3, 6, 11),
       vintage <=
-        max(monthly_records[['monthly_payments']]$vintage, na.rm = T) %m-%
+        max(monthly_cashflows$vintage, na.rm = T) %m-%
         months(original_term_to_maturity +
                  additional_months),
       months_on_books <=

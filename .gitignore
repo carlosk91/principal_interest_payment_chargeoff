@@ -4,3 +4,9 @@
 .Ruserdata
 *.csv
 *.xlsx
+*.zip
+gbm*
+GBM*
+*.DS_Store
+*.png
+*.html
