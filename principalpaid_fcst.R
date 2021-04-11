@@ -1,13 +1,14 @@
-
-
-
 #### Using Model to forecast ####
 
 evaluation_data <- as.h2o(monthly_originations_for_bt %>%
+                            filter(original_term_to_maturity + 2 >= 
+                                     month_on_book) %>%
                             select(all_of(x)))
 
 predict_principal_paid <-
-  cbind(monthly_originations_for_bt,
+  cbind(monthly_originations_for_bt %>%
+          filter(original_term_to_maturity + 2 >= 
+                   month_on_book),
         estimated_principal_paid_delta =
           as.vector(h2o.predict(object = sem,
                                 newdata = evaluation_data))) %>%
@@ -33,90 +34,3 @@ predict_principal_paid <-
 
 update_date <- format(Sys.Date(), '%Y%m%d')
 write_csv(predict_principal_paid, glue('principal_paid_results_{update_date}.csv'))
-
-#
-# vintage <- seq_months_to_forecast(end_date = last_vintage_to_fcst())
-# months <- seq_months_to_forecast()
-# original_term_to_maturity <- c(3, 6, 11)
-# credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
-# vertical <- c('Air', 'Cruise', 'Other', 'Package')
-#
-# vintages_mb <-
-#   as_tibble(expand_grid(
-#     vintage,
-#     months,
-#     original_term_to_maturity,
-#     credit_segment,
-#     vertical
-#   )) %>%
-#   transmute(
-#     vintage,
-#     months,
-#     vintage_year = year(vintage),
-#     year_calendar = year(months),
-#     vintage_month = months(vintage),
-#     month_calendar = months(months),
-#     original_term_to_maturity,
-#     months_on_books = month_diff(vintage, months),
-#     credit_segment,
-#     vertical
-#   )  %>%
-#   filter(months_on_books >= 0,
-#          original_term_to_maturity + 2 >= months_on_books)
-#
-#
-# pred.boost <-
-#   unlist(predict(bt_model_principal_paid,
-#                  vintages_mb %>% select(-c(vintage,
-#                                            months)))[['.pred']])
-#
-# monthly_payments_for_terms_simulation_18months <-
-#   expand_grid(vintage,
-#               term_simulation_payments(base_term = 11,
-#                                        term_to_simulate = 18)) %>%
-#   mutate(months = vintage %m+%
-#            months(months_on_books))
-#
-# monthly_payments_for_terms_simulation_24months <-
-#   expand_grid(vintage,
-#               term_simulation_payments(base_term = 11,
-#                                        term_to_simulate = 24)) %>%
-#   mutate(months = vintage %m+%
-#            months(months_on_books))
-#
-# df_pronostico_principalpaid_share <-
-#   as_tibble(cbind(vintages_mb, pred.boost)) %>%
-#   mutate(principal_paid_mod =
-#            case_when(pred.boost < 0 ~ 0,
-#                      T ~ pred.boost)) %>%
-#   arrange(vintage,
-#           original_term_to_maturity,
-#           credit_segment,
-#           vertical,
-#           months_on_books) %>%
-#   group_by(vintage,
-#            original_term_to_maturity,
-#            credit_segment,
-#            vertical) %>%
-#   mutate(
-#     principal_paid_share = principal_paid_mod /
-#       sum(principal_paid_mod),
-#     principal_paid_cumulative_share =
-#       cumsum(principal_paid_share) - principal_paid_share
-#   ) %>%
-#   ungroup() %>%
-#   select(
-#     -c(
-#       vintage_year,
-#       year_calendar,
-#       vintage_month,
-#       month_calendar,
-#       pred.boost,
-#       principal_paid_mod
-#     )
-#   ) %>%
-#   bind_rows(
-#     monthly_payments_for_terms_simulation_18months,
-#     monthly_payments_for_terms_simulation_24months
-#   ) %>%
-#   filter(vintage <= as_date(last_vintage_to_fcst()))

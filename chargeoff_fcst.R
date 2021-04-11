@@ -1,102 +1,29 @@
-#### Creating boosting trees for charge off ####
+#### Using Model to forecast ####
 
-monthly_chargeoff_fcst <- chargeoff_df_bt()
+evaluation_data <- as.h2o(monthly_originations_for_bt %>%
+                            filter(month_on_book >= 3) %>%
+                            select(all_of(x)))
 
-#Boosting
-Ntrees <- 2000
-Idepth <- 7
-Shrink <- 0.001
-pred.boost <- c()
-
-## Boosting tree
-
-bt_model_charge_off <-
-  boost_tree(
-    learn_rate = Shrink,
-    trees = Ntrees,
-    tree_depth = Idepth,
-    min_n = 1,
-    sample_size = 1,
-    mode = "regression"
-  ) %>%
-  set_engine("xgboost") %>%
-  fit(charge_off_principal_share ~ .,
-      data = monthly_chargeoff_fcst %>%
-        filter(!is.na(charge_off_principal_share)))
-
-vintage <- seq_months_to_forecast(end_date = last_vintage_to_fcst())
-months <- seq_months_to_forecast()
-original_term_to_maturity <- c(3, 6, 11)
-credit_segment <- c('Prime', 'NearPrime', 'SubPrime')
-vertical <- c('Air', 'Cruise', 'Other', 'Package')
-
-vintages_mb <-
-  as_tibble(expand_grid(
-    vintage,
-    months,
-    original_term_to_maturity,
-    credit_segment,
-    vertical
-  )) %>%
-  transmute(
-    vintage,
-    months,
-    vintage_year = year(vintage),
-    year_calendar = year(months),
-    vintage_month = months(months),
-    month_calendar = months(months),
-    original_term_to_maturity,
-    months_on_books = month_diff(vintage, months),
-    credit_segment,
-    vertical
-  )  %>%
-  filter(months_on_books > 2,
-         original_term_to_maturity + 2 >= months_on_books,)
-
-
-pred.boost <-
-  unlist(predict(bt_model_charge_off,
-                 vintages_mb %>% select(-c(vintage,
-                                           months)))[['.pred']])
-
-monthly_charge_off_for_terms_simulation_18months <-
-  expand_grid(vintage,
-              term_simulation_charge_off(base_term = 11,
-                                         term_to_simulate = 18)) %>%
-  mutate(months = vintage %m+%
-           months(months_on_books))
-
-monthly_charge_off_for_terms_simulation_24months <-
-  expand_grid(vintage,
-              term_simulation_charge_off(base_term = 11,
-                                         term_to_simulate = 24)) %>%
-  mutate(months = vintage %m+%
-           months(months_on_books))
-
-df_pronostico_chargeoff_share <-
-  as_tibble(cbind(vintages_mb, pred.boost)) %>%
-  mutate(charge_off_mod =
-           case_when(pred.boost < 0 ~ 0,
-                     T ~ pred.boost)) %>%
+predict_charge_off <-
+  cbind(monthly_originations_for_bt %>%
+          filter(month_on_book >= 3),
+        estimated_charge_off_share =
+          as.vector(h2o.predict(object = sem_co,
+                                newdata = evaluation_data))) %>%
   group_by(vintage,
            original_term_to_maturity,
            credit_segment,
            vertical) %>%
-  mutate(charge_off_principal_share = charge_off_mod /
-           sum(charge_off_mod)) %>%
-  ungroup() %>%
-  select(
-    -c(
-      vintage_year,
-      year_calendar,
-      vintage_month,
-      month_calendar,
-      charge_off_mod,
-      pred.boost
-    )
-  ) %>%
-  rbind(
-    monthly_charge_off_for_terms_simulation_18months,
-    monthly_charge_off_for_terms_simulation_24months
-  ) %>%
-  filter(vintage <= last_vintage_to_fcst())
+  transmute(
+    vintage,
+    months,
+    original_term_to_maturity,
+    month_on_book,
+    credit_segment,
+    vertical,
+    charge_off_curve = 
+      estimated_charge_off_share / sum(estimated_charge_off_share)
+  )
+
+update_date <- format(Sys.Date(), '%Y%m%d')
+write_csv(predict_principal_paid, glue('principal_paid_results_{update_date}.csv'))

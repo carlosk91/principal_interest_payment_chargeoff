@@ -8,6 +8,13 @@ monthly_originations <-
             exit_after_fetch = F) %>%
   col_names_cleaning()
 
+monthly_chargeoff <- 
+  get_query(con = con,
+            query = 'monthly_charge_off.sql', 
+            dms = 'Snowflake',
+            exit_after_fetch = F) %>%
+  col_names_cleaning()
+
 monthly_cashflows <- 
   get_query(con = con,
             query = 'monthly_cashflows.sql', 

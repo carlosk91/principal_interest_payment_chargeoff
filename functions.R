@@ -101,7 +101,7 @@ col_names_cleaning <- function(data) {
 amortization_table <- function(data, index_set) {
   
   
-  originations_forecast %>%
+  data %>%
     filter(index == index_set) %>%
     do(as.data.frame(
       amort.table(
