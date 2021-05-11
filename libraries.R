@@ -12,7 +12,7 @@ plan(multisession, workers = 2)
 
 h2o.init()
 # h2o.clusterInfo()
-# h2o.shutdown(prompt = TRUE)
+# h2o.shutdown(prompt = FALSE)
 
 
 

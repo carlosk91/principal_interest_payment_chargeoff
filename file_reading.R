@@ -1,5 +1,12 @@
-
-con <- connect_to_snowflake()
+#### Querying database ####
+con <- connect_to_snowflake(method = 'quantrix')
+# con <- DBI::dbConnect(
+#   drv = odbc::odbc() ,
+#   driver = keys$uplift_snowflake$driver,
+#   server = keys$uplift_snowflake$server,
+#   uid = keys$uplift_snowflake_quantrix$uid,
+#   pwd = keys$uplift_snowflake_quantrix$pwd
+# )
 
 monthly_originations <- 
   get_query(con = con,

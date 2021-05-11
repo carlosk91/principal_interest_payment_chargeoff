@@ -1,9 +1,10 @@
 #### Using Model to forecast ####
 
-evaluation_data <- as.h2o(monthly_originations_for_bt %>%
-                            filter(original_term_to_maturity + 2 >= 
-                                     month_on_book) %>%
-                            select(all_of(x)))
+evaluation_data <- 
+  as.h2o(monthly_originations_for_bt %>%
+         filter(original_term_to_maturity + 2 >= 
+                  month_on_book) %>%
+           select(all_of(x)))
 
 predict_principal_paid <-
   cbind(monthly_originations_for_bt %>%
@@ -24,13 +25,12 @@ predict_principal_paid <-
     credit_segment,
     vertical,
     principal_paid_curve = 
-      case_when(principal_amortization + estimated_principal_paid_delta < 0 ~ 0,
-                principal_amortization + estimated_principal_paid_delta > 0 ~ 
-                  principal_amortization + estimated_principal_paid_delta
-                ),
+      pmax(principal_amortization + estimated_principal_paid_delta, 0),
     principal_paid_curve = 
                 principal_paid_curve / sum(principal_paid_curve)
-  )
+  ) %>%
+  ungroup()
 
 update_date <- format(Sys.Date(), '%Y%m%d')
-write_csv(predict_principal_paid, glue('principal_paid_results_{update_date}.csv'))
+write_csv(predict_principal_paid, 
+          glue('principal_paid_results_{update_date}.csv'))

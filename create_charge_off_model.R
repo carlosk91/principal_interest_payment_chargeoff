@@ -8,12 +8,11 @@ nfolds <- 5
 ## Boosting tree
 
 # GBM hyperparameters
-data <- as.h2o(monthly_chargeoff_for_bt %>%
-                 filter(completion_percentage >= 3/original_term_to_maturity) %>%
+co_data <- as.h2o(monthly_chargeoff_for_bt %>%
                  select(all_of(c(y, x))))
-ss <- h2o.splitFrame(data, seed = 1, ratios = 0.9)
-train <- ss[[1]]
-test <- ss[[2]]
+co_ss <- h2o.splitFrame(co_data, seed = 1, ratios = 0.9)
+co_train <- co_ss[[1]]
+co_test <- co_ss[[2]]
 
 # Train and validate a cartesian grid of GBMs
 
@@ -29,13 +28,13 @@ search_criteria <-
        seed = 1)
 
 # Train and validate a cartesian grid of GBMs
-gbm_grid <- h2o.grid(
+co_gbm_grid <- h2o.grid(
   "gbm",
   x = x,
   y = y,
-  grid_id = "gbm_grid",
-  training_frame = train,
-  validation_frame = test,
+  grid_id = "co_gbm_grid",
+  training_frame = co_train,
+  validation_frame = co_test,
   ntrees = 100,
   seed = 1,
   hyper_params = gbm_params,
@@ -43,76 +42,77 @@ gbm_grid <- h2o.grid(
 )
 
 # Get the grid results, sorted by validation MAE
-gbm_gridperf <- h2o.getGrid(grid_id = "gbm_grid",
+co_gbm_gridperf <- h2o.getGrid(grid_id = "co_gbm_grid",
                             sort_by = "rmse")
 
-print(gbm_gridperf)
+print(co_gbm_gridperf)
 
 # Grab the top GBM model, chosen by validation AUC
-gbm <- h2o.getModel(gbm_gridperf@model_ids[[1]])
+co_gbm <- h2o.getModel(co_gbm_gridperf@model_ids[[1]])
 
-varimp <- h2o.varimp(gbm)
+co_varimp <- h2o.varimp(co_gbm)
 
-shap_values <-
-  h2o.shap_summary_plot(model = gbm,
-                        newdata =  data,
+co_shap_values <-
+  h2o.shap_summary_plot(model = co_gbm,
+                        newdata = co_data,
                         columns = x)
 
-best_ntrees <- gbm@model[["model_summary"]]$number_of_trees
-best_max_depth <- gbm@model[["model_summary"]]$max_depth
-best_col_sample_rate <-
-  as.numeric(gbm_gridperf@summary_table$col_sample_rate[1])
-best_learn_rate <- gbm_gridperf@summary_table$col_learn_rate[1]
-best_sample_rate <- as.numeric(gbm_gridperf@summary_table$sample_rate[1])
+co_best_ntrees <- co_gbm@model[["model_summary"]]$number_of_trees
+co_best_max_depth <- co_gbm@model[["model_summary"]]$max_depth
+co_best_col_sample_rate <-
+  as.numeric(co_gbm_gridperf@summary_table$col_sample_rate[1])
+co_best_learn_rate <- co_gbm_gridperf@summary_table$col_learn_rate[1]
+co_best_sample_rate <- as.numeric(co_gbm_gridperf@summary_table$sample_rate[1])
 
-h2o.rm(gbm)
+h2o.rm(co_gbm)
 
-gbm <-
+co_gbm <-
   h2o.gbm(
     x = x,
     y = y,
-    training_frame = train,
-    ntrees = best_ntrees,
-    max_depth = best_max_depth,
-    learn_rate = best_learn_rate,
-    col_sample_rate = best_col_sample_rate,
-    sample_rate = best_sample_rate,
+    training_frame = co_train,
+    ntrees = co_best_ntrees,
+    max_depth = co_best_max_depth,
+    learn_rate = co_best_learn_rate,
+    col_sample_rate = co_best_col_sample_rate,
+    sample_rate = co_best_sample_rate,
     nfolds = nfolds,
     keep_cross_validation_predictions = TRUE,
     seed = 1
   )
 
 # Save model when re estimate
-model_path <- h2o.saveModel(object = gbm,
+model_path <- h2o.saveModel(object = co_gbm,
                             path = getwd(),
                             force = T)
 
-mojo_destination <- h2o.save_mojo(object = gbm,
+mojo_destination <- h2o.save_mojo(object = co_gbm,
                                   path = getwd(),
                                   force = T)
 
-varimp <- h2o.varimp(gbm)
+co_varimp <- h2o.varimp(co_gbm)
 
-gbm_perf <- h2o.performance(model = gbm,
-                            newdata = data)
-gbm_perf
+co_gbm_perf <- h2o.performance(model = co_gbm,
+                            newdata = co_data)
+
+co_gbm_perf
 
 # Look at the hyperparameters for the best model
-print(gbm@model[["model_summary"]])
+print(co_gbm@model[["model_summary"]])
 
 shap_values <-
-  h2o.shap_summary_plot(model = gbm,
-                        newdata =  data,
-                        columns = varimp$variable)
+  h2o.shap_summary_plot(model = co_gbm,
+                        newdata =  co_data,
+                        columns = co_varimp$variable)
 
 #### Deep learning model ####
 
-dlm <-
+co_dlm <-
   h2o.deeplearning(
     x = x,
     y = y,
     seed = 1,
-    training_frame = train,
+    training_frame = co_train,
     nfolds = nfolds,
     keep_cross_validation_predictions = T
   )
@@ -121,38 +121,34 @@ sem_co <-
   h2o.stackedEnsemble(
     x = x,
     y = y,
-    training_frame = train,
-    base_models = list(dlm, gbm)
+    training_frame = co_train,
+    base_models = list(co_dlm, co_gbm)
   )
 
+h2o.performance(sem_co, train = T)
+h2o.performance(sem_co, co_test)
 
-predict <-
-  cbind(monthly_chargeoff_for_bt %>%
-          filter(completion_percentage >= 3/original_term_to_maturity),
+co_predict <-
+  cbind(monthly_chargeoff_for_bt,
         estimated_charge_off_share =
-          as.vector(h2o.predict(object = sem_co,
-                                newdata = data))) %>%
-  as_tibble() %>%
-  group_by(vintage_year,
-           vintage_month,
-           original_term_to_maturity,
-           credit_segment,
-           vertical) %>%
-  mutate(estimated_charge_off_share =
-           case_when(
-             completion_percentage < 3/original_term_to_maturity ~ 0,
-             T ~ estimated_charge_off_share / sum(estimated_charge_off_share))) %>%
-  ungroup()
+          as.vector(h2o.predict(object = co_gbm,
+                                newdata = co_data))) %>%
+  as_tibble()
 
+co_predict %>%
+  pivot_longer(c(chargeoff_share, estimated_charge_off_share), 
+               names_to = "real_estimated", values_to = "charge_off_share") %>%
+  ggplot(aes(x = charge_off_share, color = real_estimated)) +
+  geom_density()
 
-
-predict %>%
+co_predict %>%
   transmute(delta =
               chargeoff_share - estimated_charge_off_share) %>%
   ggplot(aes(x = delta)) +
   stat_ecdf(geom = "step", pad = FALSE)
 
-predict %>%
+co_predict %>%
   transmute(delta =
               chargeoff_share - estimated_charge_off_share) %$%
   quantile(delta, probs = seq(0.1,1,0.1))
+
