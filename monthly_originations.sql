@@ -1,5 +1,6 @@
 SELECT 
 date_trunc('Month',to_date(cs.ORIGINATION_DATE)) AS VINTAGE,
+(case when subvention_id IS NOT NULL then 'Sub' else 'IB' end) as PRODUCT,
         cs.ORIGINAL_TERM_TO_MATURITY,
         CASE
             WHEN cs.FICO < 640
@@ -23,12 +24,14 @@ JOIN PRODUCTION_DB.PUBLIC.CREDIT_SUISSE_FEED cs
         ON cs.LOAN_NUMBER = bi.LOAN_ID 
                 AND cs.REPORT_DATE = DATEADD(Day ,-2, current_date)
 JOIN PRODUCTION_DB.PUBLIC.PARTNER_CLASSIFICATION pc USING(UPCODE)
-WHERE loan_status NOT IN ('Not Originated', 'Cancelled') and subvention_id is null
+WHERE loan_status NOT IN ('Not Originated', 'Cancelled')
 GROUP BY VINTAGE,
+        PRODUCT,
         cs.ORIGINAL_TERM_TO_MATURITY,
         Credit_Segment,
         VERTICAL
 ORDER BY VINTAGE,
+        PRODUCT,
         cs.ORIGINAL_TERM_TO_MATURITY,
         Credit_Segment,
         VERTICAL

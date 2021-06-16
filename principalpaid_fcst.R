@@ -27,7 +27,8 @@ predict_principal_paid <-
     principal_paid_curve = 
       pmax(principal_amortization + estimated_principal_paid_delta, 0),
     principal_paid_curve = 
-                principal_paid_curve / sum(principal_paid_curve)
+                principal_paid_curve / sum(principal_paid_curve),
+    product
   ) %>%
   ungroup()
 

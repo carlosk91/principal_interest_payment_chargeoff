@@ -1,11 +1,10 @@
-
 source('~/Documents/git/database_connection/db_connection.R')
 
-last_vintage_to_fcst <- function(limit_year = 2026){
+last_vintage_to_fcst <- function(limit_year = 2026) {
   as_date(glue('{limit_year}-12-01'))
 }
 
-last_month_to_fcst <- function(limit_year = 2026){
+last_month_to_fcst <- function(limit_year = 2026) {
   as_date(glue('{limit_year}-12-01'))
 }
 
@@ -99,32 +98,41 @@ col_names_cleaning <- function(data) {
 }
 
 amortization_table <- function(data, index_set) {
-  
-  
-  data %>%
-    filter(index == index_set) %>%
-    do(as.data.frame(
-      amort.table(
-        Loan = .$loan_amount,
-        n = .$original_term_to_maturity,
-        i = .$wa_interest_rate
-      )$Schedule
-    )) %>%
-    mutate(
-      index_set,
-      month_on_book = as.numeric(rownames(.))
-    ) %>%
-    col_names_cleaning() %>%
-    select(
-      index = index_set,
-      month_on_book,
-      principal_amortization = principal_paid
-    )
+  if (data %>%
+      filter(index == index_set) %$%
+      wa_interest_rate > 0) {
+    data %>%
+      filter(index == index_set) %>%
+      do(as.data.frame(
+        amort.table(
+          Loan = .$loan_amount,
+          n = .$original_term_to_maturity,
+          i = .$wa_interest_rate
+        )$Schedule
+      )) %>%
+      mutate(index_set,
+             month_on_book = as.numeric(rownames(.))) %>%
+      col_names_cleaning() %>%
+      select(index = index_set,
+             month_on_book,
+             principal_amortization = principal_paid)
+  } else if (data %>%
+             filter(index == index_set) %$%
+             wa_interest_rate == 0) {
+    data %>%
+      filter(index == index_set) %>%
+      mutate(term_temp = original_term_to_maturity) %>%
+      uncount(original_term_to_maturity) %>%
+      transmute(
+        index,
+        month_on_book = row_number(),
+        principal_amortization = loan_amount / term_temp
+      )
+  }
 }
 
 handlers("progress")
 amortization_mapping <- function(data, x) {
-
   p <- progressor(steps = length(x))
   
   future_map_dfr(x, ~ {

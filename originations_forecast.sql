@@ -1,9 +1,12 @@
-select transaction_month as vintage, vertical, 
-term as original_term_to_maturity, credit_segment, 
-sum(transaction_volume * interest_rate) / 
-sum(transaction_volume) as wa_interest_rate
-from "FINANCE_DB"."F_DATASETS"."BOTTOMS_UP_PLAN"
-where version = '0.19_reforcast_2021-05-01-2256' 
-and product_cat = 'Traditional'
+select 
+transaction_month as vintage, 
+vertical, 
+product,
+term as original_term_to_maturity, 
+credit_segment, 
+sum(volume * interest_rate) / 
+sum(volume) as wa_interest_rate
+from "FINANCE_DB"."F_DATASETS"."BOTTOMS_UP"
+where version = '0.27_reforecast_2021-05-21' 
 and transaction_month >= '2019-11-01' 
-group by vintage, vertical, term, credit_segment
+group by vintage, vertical, product, term, credit_segment

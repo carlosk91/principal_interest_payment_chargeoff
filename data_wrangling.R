@@ -7,6 +7,7 @@ monthly_originations <-
   monthly_originations %>%
   rowid_to_column('index')
 
+plan(multisession, workers = 2)
 with_progress({
   training_set_amortization_table <-
     amortization_mapping(monthly_originations, monthly_originations$index)
@@ -112,13 +113,10 @@ monthly_chargeoff_for_bt <-
   ) %>%
   left_join(training_set_amortization_table_unit) %>%
   transmute(
-    transaction_year = lubridate::year(charge_off_month),
-    transaction_month = lubridate::month(charge_off_month),
-    vintage_year = lubridate::year(vintage),
-    vintage_month = lubridate::month(vintage),
     completion_percentage = month_on_book / original_term_to_maturity,
     credit_segment,
     vertical,
+    original_term_to_maturity,
     wa_interest_rate,
     principal_amortization = replace_na(principal_amortization_share, 0),
     chargeoff_share
@@ -156,6 +154,7 @@ monthly_originations_for_bt <-
   transmute(
     index,
     vintage,
+    product,
     vertical,
     original_term_to_maturity,
     credit_segment,
@@ -172,6 +171,7 @@ monthly_originations_for_bt <-
       transmute(
         index,
         vintage,
+        product,
         vertical,
         original_term_to_maturity,
         credit_segment,
@@ -185,6 +185,7 @@ monthly_originations_for_bt <-
   mutate(transaction_month = ymd(vintage) %m+% months(month_on_book)) %>%
   transmute(
     vintage,
+    product,
     vintage_year = lubridate::year(vintage),
     vintage_month = lubridate::month(vintage),
     months = transaction_month,

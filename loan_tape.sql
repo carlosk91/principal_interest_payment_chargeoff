@@ -2,7 +2,7 @@ SELECT
 LOAN_ID,
 date_trunc('month',to_date(cs.ORIGINATION_DATE)) AS vintage,
 PAYOFF_DATE,
-case when subvention_id is not null then 1 else 0 end as SUBVENTION_FLAG,
+(case when subvention_id IS NOT NULL then 'Sub' else 'IB' end) as PRODUCT,
 CASE
     WHEN bi.MERCHANT_CURRENCY = 'USD' THEN 'USA'
     WHEN bi.MERCHANT_CURRENCY = 'CAD' THEN 'CAN'

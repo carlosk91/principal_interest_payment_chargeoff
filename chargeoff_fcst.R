@@ -11,6 +11,7 @@ predict_charge_off <-
           as.vector(h2o.predict(object = sem_co,
                                 newdata = evaluation_data))) %>%
   group_by(vintage,
+           product,
            original_term_to_maturity,
            credit_segment,
            vertical) %>%
@@ -23,7 +24,8 @@ predict_charge_off <-
     vertical,
     charge_off_curve = 
       pmax(estimated_charge_off_share, 0) / 
-      sum(pmax(0, estimated_charge_off_share))
+      sum(pmax(0, estimated_charge_off_share)),
+    product
   )
 
 update_date <- format(Sys.Date(), '%Y%m%d')

@@ -1,5 +1,6 @@
 SELECT 
 date_trunc('Month',to_date(cs.ORIGINATION_DATE)) AS VINTAGE,
+(case when subvention_id IS NOT NULL then 'Sub' else 'IB' end) as PRODUCT,
 date_trunc('Month',to_date(cs.charge_off_date)) AS CHARGE_OFF_MONTH,
 cs.ORIGINAL_TERM_TO_MATURITY,
         CASE
@@ -26,12 +27,14 @@ WHERE loan_status NOT IN ('Not Originated', 'Cancelled') and subvention_id is nu
 and cs.chargeoff_principal != 0
 GROUP BY 
         VINTAGE,
+        PRODUCT,
         CHARGE_OFF_MONTH,
         cs.ORIGINAL_TERM_TO_MATURITY,
         Credit_Segment,
         VERTICAL
 ORDER BY 
         VINTAGE,
+        PRODUCT,
         CHARGE_OFF_MONTH,
         cs.ORIGINAL_TERM_TO_MATURITY,
         Credit_Segment,
